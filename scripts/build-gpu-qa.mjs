@@ -1,0 +1,1 @@
+import {build} from 'vite';import path from 'node:path';await build({configFile:false,root:path.resolve('docs/verification/gpu-qa'),publicDir:path.resolve('docs/verification/gpu-qa/fixtures'),build:{outDir:path.resolve('docs/verification/gpu-qa-dist'),emptyOutDir:true},logLevel:'error'});

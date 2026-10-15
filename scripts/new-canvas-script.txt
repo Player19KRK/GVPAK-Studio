@@ -1,0 +1,39 @@
+<script>
+ import {onDestroy} from 'svelte';import {layout,resetLayout} from '../layout.svelte';
+ import {ChevronLeft,ChevronRight,Maximize,Plus,Minus,Columns2,Grid2X2,Check,X,Expand,Minimize,RotateCcw} from 'lucide-svelte';
+ import {studio,asset,change,notify,importImages} from '../studio.svelte';import {clone,initialEdit} from '../api';
+ import {previewCache,requestPreview,publishPreview,previewStats} from '../preview-loader';import {sourceKey,previewKey,originalKey,outputGeometry,normalizeEdit} from '../preview-cache';import {createGpuPreview} from '../gpu-preview';
+ let stage=$state(),frame=$state(),gpuCanvas=$state(),available=$state({w:800,h:500}),imageSize=$state({w:1600,h:1200});let fit=$derived(Math.min(available.w*.96/imageSize.w,available.h*.96/imageSize.h));
+ let selection=$state(null),shown=$state(''),base=$state(''),gpuReady=$state(false),gpuVisible=$state(false),showBusy=$state(false);let drag=null,gpu=null,drawFrame=0,renderToken=0,currentSource='',basis=null,displayed=null,original=null;
+ function diagnostics(extra={}){studio.previewDiagnostics={...previewStats(),...(gpu?.stats()||{}),...extra};}
+ function keepBasis(entry){if(basis===entry)return;previewCache.retain(entry);previewCache.release(basis);basis=entry;}
+ function showExact(entry,signature){if(displayed!==entry){previewCache.retain(entry);previewCache.release(displayed);displayed=entry;}cancelAnimationFrame(drawFrame);shown=entry.url;imageSize={w:entry.width,h:entry.height};gpuVisible=false;studio.preview=entry.url;studio.previewAssetId=studio.aid;studio.previewSignature=signature;publishPreview(entry);diagnostics({lastDisplay:'precise'});}
+ function paint(entry,edit,a,token){const scheduled=performance.now();cancelAnimationFrame(drawFrame);drawFrame=requestAnimationFrame(()=>{if(token!==renderToken||!gpu||!gpuReady)return;try{if(gpu.draw(entry.bitmap,edit,a.width,a.height)){gpuVisible=true;diagnostics({lastDisplay:'gpu',lastInteractiveMs:performance.now()-scheduled});}}catch{gpuReady=false;gpuVisible=false;studio.previewEngine='cpu';}});}
+ const identity=e=>!e.crop&&!e.rotation&&!e.flipH&&!e.flipV&&(e.adjustmentEnabled===false||e.adjustmentOpacity===0||(!e.exposure&&e.contrast===1&&e.saturation===1&&!e.temperature));
+ $effect(()=>{const canvas=gpuCanvas,enabled=studio.gpuPreviewEnabled;if(!canvas)return;if(!enabled){gpuReady=false;gpuVisible=false;studio.previewEngine='cpu';return;}const renderer=createGpuPreview(canvas,()=>{gpuReady=false;gpuVisible=false;studio.previewEngine='cpu';});gpu=renderer;gpuReady=!!renderer;studio.previewEngine=renderer?'gpu':'cpu';diagnostics();return()=>{renderer?.dispose();if(gpu===renderer)gpu=null;};});
+ $effect(()=>{
+  const a=asset(),pid=studio.pid,root=studio.dataRoot,canGpu=gpuReady&&studio.gpuPreviewEnabled;const draft=clone(studio.draft),edit=normalizeEdit(studio.tool==='crop'?{...draft,crop:null,rotation:0,flipH:false,flipV:false}:draft);const token=++renderToken;let live=true;const controller=new AbortController();let sourceTimer,preciseTimer,busyTimer;
+  if(!a){shown='';gpuVisible=false;return;}
+  const source=sourceKey(root,pid,a),basisKey=source+'|basis',key=previewKey(root,pid,a,edit),signature=JSON.stringify(edit),plain=identity(edit);const geometry=outputGeometry(a.width,a.height,edit);imageSize={w:geometry.width,h:geometry.height};
+  if(currentSource!==source){currentSource=source;cancelAnimationFrame(drawFrame);gpuVisible=false;shown=studio.thumbs[a.id]||'';previewCache.release(displayed);displayed=null;previewCache.release(basis);basis=null;selection=null;}
+  studio.previewBusy=false;showBusy=false;
+  const exact=previewCache.get(key)||(plain?previewCache.get(basisKey):null);
+  if(exact){showExact(exact,signature);return()=>{live=false;controller.abort();};}
+  const cachedBasis=previewCache.get(basisKey);if(cachedBasis){keepBasis(cachedBasis);if(canGpu)paint(cachedBasis,edit,a,token);}
+  function fail(e){if(live&&e.name!=='AbortError'&&!e.message.includes('PREVIEW_SUPERSEDED'))studio.error=e.message;}
+  function settled(){if(live){studio.previewBusy=false;showBusy=false;clearTimeout(busyTimer);}}
+  const refine=()=>{if(!live)return;studio.previewBusy=true;busyTimer=setTimeout(()=>{if(live)showBusy=true;},250);requestPreview(key,'preview',{projectId:pid,assetId:a.id,edit},{priority:1,signal:controller.signal}).then(entry=>{if(live&&token===renderToken)showExact(entry,signature);}).catch(fail).finally(settled);};
+  if((canGpu||plain)&&!cachedBasis){sourceTimer=setTimeout(()=>{if(!live)return;studio.previewBusy=true;requestPreview(basisKey,'preview_source',{projectId:pid,assetId:a.id},{priority:0,signal:controller.signal}).then(entry=>{if(!live||token!==renderToken)return;keepBasis(entry);if(plain){showExact(entry,signature);settled();}else if(canGpu)paint(entry,edit,a,token);}).catch(e=>{if(live&&e.name!=='AbortError'){if(plain)refine();else fail(e);}});},45);}
+  if(!plain)preciseTimer=setTimeout(refine,canGpu?220:85);
+  return()=>{live=false;controller.abort();clearTimeout(sourceTimer);clearTimeout(preciseTimer);clearTimeout(busyTimer);cancelAnimationFrame(drawFrame);};
+ });
+ $effect(()=>{const a=asset(),pid=studio.pid,root=studio.dataRoot,compare=studio.compare;const controller=new AbortController();let live=true;base='';previewCache.release(original);original=null;if(!a||!compare)return;const key=originalKey(root,pid,a);const display=entry=>{if(!live)return;previewCache.retain(entry);original=entry;base=entry.url;studio.original=entry.url;diagnostics();};const cached=previewCache.get(key);if(cached)display(cached);else requestPreview(key,'original_preview',{projectId:pid,assetId:a.id},{priority:2,signal:controller.signal}).then(display).catch(e=>{if(live&&e.name!=='AbortError')studio.error=e.message;});return()=>{live=false;controller.abort();};});
+ $effect(()=>{if(!stage)return;let measured=false;const observer=new ResizeObserver(()=>{const next={w:stage.clientWidth,h:stage.clientHeight};const oldFit=Math.min(available.w*.96/imageSize.w,available.h*.96/imageSize.h),newFit=Math.min(next.w*.96/imageSize.w,next.h*.96/imageSize.h);if(measured&&!studio.canvasFit&&oldFit>0&&newFit>0)studio.zoom=studio.zoom*oldFit/newFit;available=next;measured=true;});observer.observe(stage);return()=>observer.disconnect();});
+ onDestroy(()=>{cancelAnimationFrame(drawFrame);previewCache.release(basis);previewCache.release(displayed);previewCache.release(original);});
+ function resetView(e){if(e&&e.button!==0)return;if(e?.target?.closest('button,select,textarea'))return;drag=null;studio.zoom=1;studio.canvasFit=true;studio.pan={x:0,y:0};}
+ function point(e){const r=frame.getBoundingClientRect();return [Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))];}
+ function down(e){if(e.button!==0||studio.compare)return;if(studio.tool==='crop')drag={start:point(e)};else drag={x:e.clientX,y:e.clientY,pan:{...studio.pan}};e.currentTarget.setPointerCapture(e.pointerId);}
+ function move(e){if(!drag)return;if(drag.start){const p=point(e),r=frame.getBoundingClientRect();if(Math.hypot((p[0]-drag.start[0])*r.width,(p[1]-drag.start[1])*r.height)<3)return;selection=[Math.min(p[0],drag.start[0]),Math.min(p[1],drag.start[1]),Math.abs(p[0]-drag.start[0]),Math.abs(p[1]-drag.start[1])];}else studio.pan={x:drag.pan.x+e.clientX-drag.x,y:drag.pan.y+e.clientY-drag.y};}
+ function applyCrop(){if(selection&&selection[2]>.005&&selection[3]>.005){change({crop:selection});selection=null;studio.tool='adjust';notify('Crop applied');}}
+ function key(e){if(e.key==='Enter'&&studio.tool==='crop')applyCrop();if(e.key==='Escape')selection=null;}
+</script>

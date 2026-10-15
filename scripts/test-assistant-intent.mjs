@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {planningInstruction,defaultOutputFormat} from '../src/assistant-intent.js';import {assistantPresets} from '../src/assistant-presets.js';
+test('natural presets are short and full workflow matches user example',()=>{assert.equal(assistantPresets[0].instruction,'产品主图，800*800，100kb');assert.ok(assistantPresets.every(p=>p.instruction.length<70));});
+test('implicit format defaults to webp, explicit request is preserved',()=>{assert.equal(defaultOutputFormat('产品主图，800*800，100kb',{output:{format:'jpeg'}}).output.format,'webp');assert.equal(defaultOutputFormat('导出PNG',{output:{format:'png'}}).output.format,'png');});
+test('planning context defines product scene and keeps capability limits honest',()=>{const s=planningInstruction('产品主图，800*800，100kb');assert.ok(s.includes('AI-generated'));assert.ok(s.includes('100000 bytes'));assert.ok(s.includes('Never invent'));});

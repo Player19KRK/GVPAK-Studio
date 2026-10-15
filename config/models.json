@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "gemini-nano-banana-2.1",
+      "name": "Nano Banana 2.1",
+      "resolutions": ["1K", "2K", "4K"],
+      "ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+      "inputUsdPerMillion": 1.5,
+      "textUsdPerMillion": 7.5,
+      "imageUsdPerMillion": 30,
+      "imageUsd": {
+        "1K": 0.0336,
+        "2K": 0.0504,
+        "4K": null
+      },
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "checkedAt": "2026-10-12",
+      "note": "4K 单张价格存在官方文档冲突，暂不估算。"
+    },
+    {
+      "id": "gemini-3-pro-image",
+      "name": "Nano Banana Pro",
+      "resolutions": ["1K", "2K", "4K"],
+      "ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+      "inputUsdPerMillion": 2,
+      "textUsdPerMillion": 12,
+      "imageUsdPerMillion": 120,
+      "imageUsd": {
+        "1K": 0.134,
+        "2K": 0.134,
+        "4K": 0.24
+      },
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "checkedAt": "2026-10-12",
+      "note": "按官方标准实时价格估算。"
+    },
+    {
+      "id": "gemini-3.1-flash-lite-image",
+      "name": "Nano Banana Lite",
+      "resolutions": ["1K"],
+      "ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+      "inputUsdPerMillion": 0.25,
+      "textUsdPerMillion": 1.5,
+      "imageUsdPerMillion": 30,
+      "imageUsd": {
+        "1K": 0.0336
+      },
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "checkedAt": "2026-10-12",
+      "note": "仅 1K；完整宽高比列表仍待核实。"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+from pathlib import Path
+p=Path('src/components/Export.svelte');s=p.read_text(encoding='utf-8-sig');s=s.replace("let preset=$state(stored('export',", "const initialPreset=stored('export',").replace("background:[255,255,255]}));let limit=$state(preset.maxBytes>0)", "background:[255,255,255]});let preset=$state(initialPreset);let limit=$state(initialPreset.maxBytes>0)");p.write_text(s,encoding='utf-8')
+from PIL import Image
+import json
+files=[]
+for path in Path('docs/verification/ux-exports').glob('*.webp'):
+ im=Image.open(path);im.load();assert im.size==(256,256);files.append({'file':path.name,'dimensions':list(im.size),'bytes':path.stat().st_size})
+report={'checks':['exact numeric input changes actual edit','draft exposure 0.35 restored after browser reload','Save current image creates version','search Gallery -> Select results checks only Gallery','selected/current/all scope options match thumbnails and export preview','generation prompt survives Settings round trip','local steps survive switching to Settings and back','invalid export width 0 disables export with inline reason','version restore with dirty draft offers Save first / Replace / Cancel','cancel restore preserves draft; Revert draft restores saved edit','Coverflow off-center selection click works after pointer-layer fix','actual all-project export reports 3 of 3 exported'],'exports':files,'paidRequests':0,'browserConsoleErrors':[]}
+Path('docs/verification/workflow-ux.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+print(json.dumps(files))
+p=Path('README.md');s=p.read_text(encoding='utf-8-sig');s+='\n## Workflow UX update\nEditing drafts are automatically kept in browser storage, separately from saved versions. Save / Ctrl+S saves the current image. Export and Process default to selected images (or the current image) and expose an explicit scope switch. Workflow inputs survive switching pages. See `docs/UX-WORKFLOWS.md` for detailed changes and `docs/verification/workflow-ux.json` for this pass.\n';p.write_text(s,encoding='utf-8')
+p=Path('DESIGN.md');s=p.read_text(encoding='utf-8-sig');s+='\nTask scope must be explicit before batch export or processing. Search selection affects visible results only. Current-image Save is separate from batch scope. Preserve image drafts on reload and workflow form inputs when switching pages. Protect dirty drafts before restoring/adopting versions; give reversible trash actions. Validate export fields inline and report successful, unmet and cancelled items separately.\n';p.write_text(s,encoding='utf-8')

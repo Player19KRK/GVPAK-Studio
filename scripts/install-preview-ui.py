@@ -1,0 +1,15 @@
+from pathlib import Path
+p=Path('src/components/Canvas.svelte');s=p.read_text(encoding='utf-8-sig');s=Path('scripts/new-canvas-script.txt').read_text(encoding='utf-8-sig')+s[s.index('<svelte:window'):]
+s=s.replace('<div bind:this={stage}', '<!-- svelte-ignore a11y_no_noninteractive_element_interactions (Double-click duplicates the accessible Fit image action.) -->\n<div ondblclick={resetView} bind:this={stage}',1)
+s=s.replace(' onload={e=>imageSize={w:e.currentTarget.naturalWidth,h:e.currentTarget.naturalHeight}}','')
+s=s.replace('<img src={shown||studio.thumbs[studio.aid]}', '<img class:under-gpu={gpuVisible} src={shown||studio.thumbs[studio.aid]}',1)
+s=s.replace('draggable="false"/>\n {#if studio.compare}', 'draggable="false"/>\n <canvas bind:this={gpuCanvas} class="gpu-preview" class:active={gpuVisible} aria-hidden="true"></canvas>\n {#if studio.compare}',1)
+s=s.replace('<img src={base} alt="Original" draggable="false"/>', '{#if base}<img src={base} alt="Original" draggable="false"/>{:else}<span class="original-loading">Loading original</span>{/if}')
+s=s.replace('{#if studio.previewBusy}<span class="render-badge" role="status">Rendering</span>{/if}', '{#if showBusy}<span class="render-badge" role="status">{gpuVisible?\'Refining\':\'Loading preview\'}</span>{/if}')
+p.write_text(s,encoding='utf-8')
+p=Path('src/components/Settings.svelte');s=p.read_text(encoding='utf-8-sig').replace('<h3>Local tools</h3>', '<label>Preview acceleration<select aria-label="Preview acceleration" bind:value={studio.gpuPreviewEnabled} onchange={()=>persist(\'gpu-preview-enabled\',studio.gpuPreviewEnabled)}><option value={true}>GPU when available</option><option value={false}>CPU compatibility</option></select></label><div class="status-line"><span>Preview engine</span><b>{studio.previewEngine===\'gpu\'?\'GPU ready\':studio.previewEngine===\'cpu\'?\'CPU\':\'Checking\'}</b></div><h3>Local tools</h3>');p.write_text(s,encoding='utf-8')
+p=Path('src/components/Coverflow.svelte');s=p.read_text(encoding='utf-8-sig').replace('selecting=$state(true);', 'selecting=$state(true),badgeVisible=$state(false),badgeSelecting=$state(true),badgeEpoch=$state(0);let badgeTimer;\n function modeNotice(value,checked){spaceHeld=value;selecting=checked;clearTimeout(badgeTimer);if(value){badgeSelecting=checked;badgeVisible=true;badgeEpoch++;}else if(badgeVisible)badgeTimer=setTimeout(()=>badgeVisible=false,600);}')
+s=s.replace('onHeld:(value,checked)=>{spaceHeld=value;selecting=checked;}', 'onHeld:modeNotice')
+s=s.replace("document.removeEventListener('visibilitychange',hide);release();", "document.removeEventListener('visibilitychange',hide);release();clearTimeout(badgeTimer);")
+s=s.replace("{#if spaceHeld}<span class=\"cf-quick-hint\" role=\"status\">{selecting?'Selecting':'Deselecting'} · release Space to stop</span>{/if}", "{#key badgeEpoch}{#if badgeVisible}<span class=\"cf-mode-chip\" class:removing={!badgeSelecting} class:released={!spaceHeld} role=\"status\" aria-live=\"polite\">{#if badgeSelecting}<Check size={12}/>{:else}<Minus size={12}/>{/if}{badgeSelecting?'Select':'Deselect'}</span>{/if}{/key}")
+p.write_text(s,encoding='utf-8')

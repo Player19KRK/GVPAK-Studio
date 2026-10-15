@@ -1,0 +1,14 @@
+from pathlib import Path
+p=Path('src/components/Coverflow.svelte');s=p.read_text(encoding='utf-8-sig').replace('spaceHeld=$state(false);','spaceHeld=$state(false),selecting=$state(true);');s=s.replace("getCurrent:()=>studio.aid,toggle,add:ids=>{studio.selected=[...new Set([...studio.selected,...ids])];studio.batchScope='auto';},navigate:select,onHeld:value=>spaceHeld=value", "getCurrent:()=>studio.aid,isSelected:id=>studio.selected.includes(id),setSelected:(ids,checked)=>{studio.selected=checked?[...new Set([...studio.selected,...ids])]:studio.selected.filter(id=>!ids.includes(id));studio.batchScope='auto';},navigate:select,onHeld:(value,checked)=>{spaceHeld=value;selecting=checked;}")
+s=s.replace('Selecting · release Space to stop',"{selecting?'Selecting':'Deselecting'} · release Space to stop")
+s=s.replace('Hold Space + scroll: select images','Hold Space + scroll: select or deselect images')
+p.write_text(s,encoding='utf-8')
+p=Path('scripts/test-coverflow-selection.mjs');s=p.read_text(encoding='utf-8-sig');s=s.replace('toggle:id=>selected.has(id)?selected.delete(id):selected.add(id),add:items=>items.forEach(id=>selected.add(id)),','isSelected:id=>selected.has(id),setSelected:(items,checked)=>items.forEach(id=>checked?selected.add(id):selected.delete(id)),')
+s=s.replace("const s=setup(['image-2']);s.q.press();s.q.wheel(120);s.q.wheel(120);s.q.wheel(-120);", "const s=setup();s.q.press();s.q.wheel(120);s.q.wheel(120);s.q.wheel(-120);")
+s+='''
+test('release then re-press removes visited selections without rechecking',()=>{const s=setup(['image-0']);s.q.press();s.q.wheel(120);s.q.wheel(120);assert.equal(s.current,'image-4');s.q.release();s.q.press();assert.equal(s.q.selecting,false);assert.equal(s.selected.includes('image-4'),false);s.q.wheel(-120);s.q.wheel(120);s.q.wheel(-120);s.q.wheel(-120);assert.deepEqual(s.selected,['image-0']);});
+test('selection gesture leaves already checked pictures checked when revisited',()=>{const s=setup(['image-3']);s.q.press();s.q.wheel(120);s.q.wheel(-120);s.q.press();assert.deepEqual(new Set(s.selected),new Set(['image-2','image-3']));assert.equal(s.q.selecting,true);});
+test('deselection stays latched across unselected pictures and small wheel events',()=>{const s=setup(['image-2','image-4']);s.q.press();s.q.wheel(10);assert.deepEqual(s.selected,['image-4']);s.q.wheel(120);assert.equal(s.selected.includes('image-3'),false);s.q.wheel(120);assert.deepEqual(s.selected,[]);s.q.wheel(-120);assert.deepEqual(s.selected,[]);});
+'''
+p.write_text(s,encoding='utf-8')
+p=Path('README.md');s=p.read_text(encoding='utf-8-sig');s+='\nSpace selection uses one fixed intent per press: start on an unchecked image to select; release and press on a checked image to deselect. Scrolling remains one image per step. Revisiting an image during the same hold never toggles it. The intent changes only after releasing Space and pressing again.\n';p.write_text(s,encoding='utf-8')

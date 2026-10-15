@@ -1,0 +1,482 @@
+[
+  {
+    "command": "bootstrap",
+    "args": []
+  },
+  {
+    "command": "model_catalog",
+    "args": []
+  },
+  {
+    "command": "hybrid_plan",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "ids",
+        "type": "Vec<String>"
+      },
+      {
+        "name": "instruction",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "hybrid_start",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "ids",
+        "type": "Vec<String>"
+      },
+      {
+        "name": "instruction",
+        "type": "String"
+      },
+      {
+        "name": "recipe",
+        "type": "hybrid::Recipe"
+      },
+      {
+        "name": "outputDir",
+        "type": "String"
+      },
+      {
+        "name": "approved",
+        "type": "bool"
+      },
+      {
+        "name": "clientRequestId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "hybrid_jobs",
+    "args": []
+  },
+  {
+    "command": "hybrid_cancel",
+    "args": [
+      {
+        "name": "jobId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "hybrid_ack",
+    "args": [
+      {
+        "name": "jobId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "hybrid_open_output",
+    "args": [
+      {
+        "name": "jobId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "assistant_key_status",
+    "args": []
+  },
+  {
+    "command": "assistant_key_set",
+    "args": [
+      {
+        "name": "key",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "assistant_key_delete",
+    "args": []
+  },
+  {
+    "command": "assistant_tools",
+    "args": []
+  },
+  {
+    "command": "assistant_plan",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "ids",
+        "type": "Vec<String>"
+      },
+      {
+        "name": "instruction",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "assistant_preview",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "ids",
+        "type": "Vec<String>"
+      },
+      {
+        "name": "plan",
+        "type": "assistant::Plan"
+      }
+    ]
+  },
+  {
+    "command": "assistant_apply",
+    "args": [
+      {
+        "name": "sampleId",
+        "type": "String"
+      },
+      {
+        "name": "outputDir",
+        "type": "Option<String>"
+      }
+    ]
+  },
+  {
+    "command": "assistant_presets",
+    "args": []
+  },
+  {
+    "command": "assistant_save_preset",
+    "args": [
+      {
+        "name": "name",
+        "type": "String"
+      },
+      {
+        "name": "plan",
+        "type": "assistant::Plan"
+      }
+    ]
+  },
+  {
+    "command": "project_create",
+    "args": [
+      {
+        "name": "name",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "project_rename",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "name",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "pick_import",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "folder",
+        "type": "bool"
+      }
+    ]
+  },
+  {
+    "command": "import_paths",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "paths",
+        "type": "Vec<String>"
+      }
+    ]
+  },
+  {
+    "command": "preview",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "edit",
+        "type": "Edit"
+      }
+    ]
+  },
+  {
+    "command": "thumbnail",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "original_preview",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "generated_preview",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "versionId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "adopt_generated",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "versionId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "restore_version",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "versionId",
+        "type": "Option<String>"
+      }
+    ]
+  },
+  {
+    "command": "generation_details",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "versionId",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "edit_commit",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "edit",
+        "type": "Edit"
+      }
+    ]
+  },
+  {
+    "command": "asset_trash",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "ids",
+        "type": "Vec<String>"
+      },
+      {
+        "name": "restore",
+        "type": "bool"
+      }
+    ]
+  },
+  {
+    "command": "pick_output",
+    "args": []
+  },
+  {
+    "command": "export_run",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "ids",
+        "type": "Vec<String>"
+      },
+      {
+        "name": "preset",
+        "type": "ExportPreset"
+      }
+    ]
+  },
+  {
+    "command": "cancel_job",
+    "args": []
+  },
+  {
+    "command": "credential_status",
+    "args": []
+  },
+  {
+    "command": "credential_set",
+    "args": [
+      {
+        "name": "key",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "credential_delete",
+    "args": []
+  },
+  {
+    "command": "credential_test",
+    "args": []
+  },
+  {
+    "command": "generate",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "edit",
+        "type": "Edit"
+      },
+      {
+        "name": "prompt",
+        "type": "String"
+      },
+      {
+        "name": "model",
+        "type": "String"
+      },
+      {
+        "name": "resolution",
+        "type": "String"
+      },
+      {
+        "name": "ratio",
+        "type": "String"
+      },
+      {
+        "name": "approved",
+        "type": "bool"
+      },
+      {
+        "name": "estimatedInputTokens",
+        "type": "Option<u32>"
+      },
+      {
+        "name": "estimatedOutputTokens",
+        "type": "Option<u32>"
+      }
+    ]
+  },
+  {
+    "command": "data_root_switch",
+    "args": [
+      {
+        "name": "path",
+        "type": "String"
+      }
+    ]
+  },
+  {
+    "command": "preview_source",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      }
+    ]
+  }
+]

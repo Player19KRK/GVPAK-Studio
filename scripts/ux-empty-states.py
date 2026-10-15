@@ -1,0 +1,13 @@
+from pathlib import Path
+p=Path('src/components/Export.svelte');s=p.read_text(encoding='utf-8-sig').replace('referencePreview,current}', 'referencePreview,current,liveAssets,importImages}')
+s=s.replace("!Number.isInteger(preset.quality)||preset.quality<1||preset.quality>100?", "preset.format!=='png'&&(!Number.isInteger(preset.quality)||preset.quality<1||preset.quality>100)?")
+s=s.replace("const settings={...preset,maxBytes:", "const settings={...preset,quality:preset.format==='png'?100:preset.quality,maxBytes:")
+s=s.replace('<div class="workflow-panel export-panel"', '{#if !liveAssets().length}<div class="workflow-panel"><div class="empty"><h2>No images to export</h2><button class="primary" onclick={()=>importImages(false)}>Import images</button></div></div>{:else}<div class="workflow-panel export-panel"',1)
+s=s.rstrip()+'\n{/if}\n';p.write_text(s,encoding='utf-8')
+p=Path('src/components/Generate.svelte');s=p.read_text(encoding='utf-8-sig').replace('referencePreview,goSettings}', 'referencePreview,goSettings,importImages}')
+s=s.replace('<div class="workflow-panel generation-panel"', '{#if !asset()}<div class="workflow-panel"><div class="empty"><h2>Select a reference image</h2><div class="button-row"><button class="primary" onclick={()=>importImages(false)}>Import images</button><button class="line-button" onclick={()=>{studio.mode=\'edit\';studio.view=\'projects\';}}>Open projects</button></div></div></div>{:else}<div class="workflow-panel generation-panel"',1)
+s=s.rstrip()+'\n{/if}\n';p.write_text(s,encoding='utf-8')
+p=Path('src/components/Canvas.svelte');s=p.read_text(encoding='utf-8-sig').replace('Your next image starts here.','No image selected');p.write_text(s,encoding='utf-8')
+p=Path('src/components/Assistant.svelte');s=p.read_text(encoding='utf-8-sig').replace('clearDrafts,goSettings}', 'clearDrafts,goSettings,importImages}')
+s=s.replace("{#if studio.processTab==='auto'}", "{#if !scope().length&&studio.processTab!=='jobs'}<div class=\"empty\"><h2>Select images to process</h2><div class=\"button-row\"><button class=\"primary\" onclick={()=>importImages(false)}>Import images</button><button class=\"line-button\" onclick={()=>{studio.mode='edit';studio.view='grid';}}>Open image grid</button></div></div>{:else if studio.processTab==='auto'}",1)
+p.write_text(s,encoding='utf-8')
