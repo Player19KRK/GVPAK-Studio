@@ -5,7 +5,7 @@ root = pathlib.Path(__file__).resolve().parents[1]
 lab = root / 'backend' / ('verification-device-' + secrets.token_hex(4))
 lab.mkdir()
 team = lab / 'team'
-env = {**os.environ, 'EDGE_PORT': '8795', 'GVPAK_TEAM_PORT': '8796', 'GVPAK_TEAM_HOSTS': 'localhost,127.0.0.1', 'GVPAK_DATA_ROOT': str(lab / 'owner'), 'GVPAK_TEAM_ROOT': str(team), 'GVPAK_PROFILE': 'test', 'GVPAK_FEEDBACK_ROOT': str(lab / 'feedback')}
+env = {**os.environ, 'GVPAK_PORT': '8795', 'GVPAK_TEAM_PORT': '8796', 'GVPAK_TEAM_HOSTS': 'localhost,127.0.0.1', 'GVPAK_DATA_ROOT': str(lab / 'owner'), 'GVPAK_TEAM_ROOT': str(team), 'GVPAK_PROFILE': 'test', 'GVPAK_FEEDBACK_ROOT': str(lab / 'feedback')}
 host, lan = 'http://127.0.0.1:8795', 'https://127.0.0.1:8796'
 process = None
 checks = []
@@ -16,7 +16,7 @@ def check(name, ok):
     checks.append(name)
 
 def call(base, path, data=None, client=None):
-    headers = {'X-Edge-IPC': '1'}
+    headers = {'X-GVPAK-IPC': '1'}
     if data is not None:
         headers['Content-Type'] = 'application/json'
     request = urllib.request.Request(base + path, data=None if data is None else json.dumps(data).encode(), headers=headers)
@@ -28,7 +28,7 @@ def call(base, path, data=None, client=None):
 
 def start():
     global process
-    process = subprocess.Popen([str(root / 'backend/target/release/edge-backend.exe')], cwd=root, env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    process = subprocess.Popen([str(root / 'backend/target/release/gvpak-studio.exe')], cwd=root, env=env, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(120):
         if process.poll() is not None:
             raise RuntimeError('Isolated server exited')

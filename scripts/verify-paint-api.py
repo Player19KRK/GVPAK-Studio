@@ -8,7 +8,7 @@ def check(name,condition):
     assert condition,name
     checks.append(name)
 def request(path,args):
-    req=urllib.request.Request('http://127.0.0.1:8798'+path,json.dumps(args).encode(),{'Content-Type':'application/json','X-Edge-IPC':'1'})
+    req=urllib.request.Request('http://127.0.0.1:8798'+path,json.dumps(args).encode(),{'Content-Type':'application/json','X-GVPAK-IPC':'1'})
     with urllib.request.urlopen(req,timeout=60) as response:
         body=response.read()
         return json.loads(body) if 'json' in response.headers.get('Content-Type','') else body

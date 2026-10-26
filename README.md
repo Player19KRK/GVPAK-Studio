@@ -64,10 +64,14 @@ cargo test --manifest-path backend/Cargo.toml
 cargo build --release --manifest-path backend/Cargo.toml
 ```
 
-前端构建输出为 `dist/`。后端重新构建后，需要将生成的可执行程序复制到启动脚本使用的 `bin/edge-studio.exe`；这是沿用的内部文件名，应用名称为 **GVPAK Studio**。
+前端构建输出为 `dist/`。后端重新构建后，需要将生成的可执行程序复制到启动脚本使用的 `bin/gvpak-studio.exe`。
 
 接口说明见 [命令契约](docs/command-contract.json)，绘画实现说明见 [径向绘画工具设计](docs/decisions-radial-paint-menu.md)。
 
 ## 功能范围
 
 当前提供基础图像调整及绘画叠加，不具备 Photoshop 式多图层合成、PSD 编辑或修复画笔等完整专业修图功能。AI 生成功能依赖所配置服务商的模型和可用性。
+
+## 命名升级与已有配置
+
+可执行程序统一为 `bin/gvpak-studio.exe`，启动脚本、开发包名和服务标识均使用 GVPAK Studio。旧版的本机数据目录设置、浏览器草稿和 Windows 凭据会迁移到新命名下，已有图片与项目仍使用原数据目录。迁移模块仅为读取旧配置保留原存储标识，不会输出密钥或把凭据写入文件。

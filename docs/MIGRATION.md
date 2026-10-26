@@ -1,11 +1,11 @@
-# EDGE Studio 2 — migration record
+# GVPAK Studio — migration record
 
 ## Scope and decisions
 Source: `D:/AI/AI应用项目/GVPAK STUDIO 2`. Destination: this project.
 User explicitly chose a full Svelte rewrite and an independent data directory. The original project is not edited. Original projects, credentials and cloud jobs were not copied.
 
 ## Implemented mapping
-| Original capability | EDGE destination |
+| Original capability | GVPAK Studio destination |
 |---|---|
 | Projects, create, rename, image grid, multiselect, stacked covers with scroll | Library.svelte |
 | Files/folders/native picker, browser drop including folders, duplicate skip | studio.svelte.js + transport.rs + retained core.rs |
@@ -36,7 +36,7 @@ Reimplemented from `integrations/aistudio-coverflow/src/CoverFlow.tsx`, not repl
 - Cull offsets beyond 7; wheel threshold ±35.
 - Transform 350 ms cubic-bezier(0.16, 1, 0.3, 1); opacity 300 ms.
 - Header opens project library; project page retains the −14-degree entry transition and scrollable stacked covers.
-- EDGE colors, type, borders and Lucide controls replace the original warm/burgundy skin.
+- GVPAK Studio colors, type, borders and Lucide controls replace the original warm/burgundy skin.
 
 ## Technical changes
 Pure Svelte 5 frontend. React/JSX is not included in runtime. Three.js removed, spatial scene and Tour removed. CSS perspective remains solely for the explicitly retained Coverflow interaction.

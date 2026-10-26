@@ -2,7 +2,7 @@ use crate::core::Res;
 use serde_json::{Value,json};
 use base64::{Engine,engine::general_purpose::STANDARD};
 pub fn is_poe(model:&str)->bool{matches!(model,"GPT-Image-2.5-Flare"|"GPT-Image-2.5-Sunburst")}
-pub fn credential()->Res<keyring::Entry>{let profile=std::env::var("GVPAK_PROFILE").unwrap_or("dev".into());keyring::Entry::new(&format!("EDGE-STUDIO-{profile}"),"poe-official").map_err(|e|e.to_string())}
+pub fn credential()->Res<keyring::Entry>{crate::branding::credential("poe-official")}
 fn decode(bytes:Vec<u8>)->Res<image::DynamicImage>{let mut r=image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().map_err(|_|"INVALID_IMAGE")?;let mut limits=image::Limits::default();limits.max_alloc=Some(600_000_000);limits.max_image_width=Some(16000);limits.max_image_height=Some(16000);r.limits(limits);r.decode().map_err(|_|"INVALID_IMAGE".into())}
 fn urls(v:&Value,out:&mut Vec<String>){match v{Value::String(s)=>{if s.starts_with("data:image/"){out.push(s.clone());}for (start,_) in s.match_indices("https://"){let rest=&s[start..];out.push(rest.split(|c:char|c.is_whitespace()||c==')'||c=='"'||c=='<'||c==']').next().unwrap_or("").to_string());}},Value::Array(v)=>for x in v{urls(x,out)},Value::Object(v)=>for x in v.values(){urls(x,out)},_=>{}}}
 fn media_host(url:&reqwest::Url)->bool{url.scheme()=="https"&&url.host_str().is_some_and(|h|h=="poecdn.net"||h.ends_with(".poecdn.net"))&&url.username().is_empty()&&url.password().is_none()}

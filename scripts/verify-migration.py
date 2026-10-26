@@ -3,11 +3,11 @@ from pathlib import Path
 from PIL import Image,ImageDraw
 root=Path(__file__).resolve().parent.parent
 case=root/'backend'/('verification-'+str(uuid.uuid4())[:8]);case.mkdir()
-env=os.environ.copy();env.update(EDGE_PORT='8790',GVPAK_PROFILE='test',GVPAK_DATA_ROOT=str(case/'data'))
-server=subprocess.Popen([str(root/'bin/edge-studio.exe')],cwd=root,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+env=os.environ.copy();env.update(GVPAK_PORT='8790',GVPAK_PROFILE='test',GVPAK_DATA_ROOT=str(case/'data'))
+server=subprocess.Popen([str(root/'bin/gvpak-studio.exe')],cwd=root,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
 base='http://127.0.0.1:8790';checks=[]
 def req(name,args={},raw=False):
- request=urllib.request.Request(base+'/api/invoke/'+name,data=json.dumps(args).encode(),headers={'Content-Type':'application/json','X-Edge-IPC':'1'})
+ request=urllib.request.Request(base+'/api/invoke/'+name,data=json.dumps(args).encode(),headers={'Content-Type':'application/json','X-GVPAK-IPC':'1'})
  with urllib.request.urlopen(request,timeout=90) as r:
   data=r.read();return data if raw else json.loads(data)
 def ok(name,value=True):
@@ -22,7 +22,7 @@ try:
  ok('Rust v2 health',health['version']=='2.0.0')
  b=req('bootstrap');ok('isolated data root',str(case/'data').replace('\\','/').lower()==b['dataRoot'].replace('\\','/').lower())
  project=req('project_create',{'name':'Migration verification'});pid=project['id']
- image=Image.new('RGBA',(320,240),(255,255,255,255));d=ImageDraw.Draw(image);d.rectangle((70,40,250,200),fill=(225,30,40,255));d.text((95,110),'EDGE TEST',fill='white');src=case/'input.png';image.save(src);original=hashlib.sha256(src.read_bytes()).hexdigest()
+ image=Image.new('RGBA',(320,240),(255,255,255,255));d=ImageDraw.Draw(image);d.rectangle((70,40,250,200),fill=(225,30,40,255));d.text((95,110),'GVPAK Studio TEST',fill='white');src=case/'input.png';image.save(src);original=hashlib.sha256(src.read_bytes()).hexdigest()
  imported=req('import_paths',{'projectId':pid,'paths':[str(src)]});a=imported['project']['assets'][0];aid=a['id'];ok('real local import',imported['imported']==1)
  duplicate=req('import_paths',{'projectId':pid,'paths':[str(src)]});ok('duplicate skipped',duplicate['imported']==0 and len(duplicate['skipped'])==1)
  thumb=Image.open(io.BytesIO(req('thumbnail',{'projectId':pid,'assetId':aid},True)));ok('thumbnail decodes',thumb.width>0)

@@ -23,7 +23,7 @@
 
 .project-warning-notice{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 18px;background:var(--paper);font-size:12px;border-bottom:1px solid var(--line)}.project-warning-notice[hidden]{display:none}.project-warning-detail,.local-result small{overflow-wrap:anywhere}.local-result{padding:8px 0;border-bottom:1px solid var(--line)}.local-result small{display:block}
 
-/* Compact EDGE radial tools. Geometry uses CSS pixels and canvas bounds. */
+/* Compact GVPAK Studio radial tools. Geometry uses CSS pixels and canvas bounds. */
 .paint-menu-shade{position:fixed;inset:0;z-index:90;touch-action:none}
 .paint-wheel{position:absolute;color:#344139;isolation:isolate}
 .wheel-glass{position:absolute;inset:7px;border-radius:50%;background:#f8f9f5c9;backdrop-filter:blur(6px);box-shadow:0 6px 18px #20362920;pointer-events:none;z-index:-1}

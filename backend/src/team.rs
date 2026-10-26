@@ -50,7 +50,7 @@ impl Team{
  fn allowed(&self,h:&HeaderMap,write:bool)->bool{
   let Some(host)=h.get(header::HOST).and_then(|v|v.to_str().ok()) else{return false};
   if !self.hosts.iter().any(|x|x==host){return false}
-  if write&&h.get("x-edge-ipc").and_then(|v|v.to_str().ok())!=Some("1"){return false}
+  if write&&h.get("x-gvpak-ipc").and_then(|v|v.to_str().ok())!=Some("1"){return false}
   h.get(header::ORIGIN).is_none_or(|v|v.to_str().ok()==Some(format!("https://{host}").as_str()))
  }
  fn account(&self,h:&HeaderMap)->Option<Account>{
@@ -191,7 +191,7 @@ pub fn launch(project:PathBuf,owner:Shared){
 }
 #[cfg(test)]mod tests{use super::*;
  fn auth_team(root:PathBuf)->Arc<Team>{Arc::new(Team{feedback:root.join("reports"),root,profile:"test".into(),hosts:vec!["localhost:8788".into()],accounts:Mutex::new(vec![Account{id:"user-a".into(),username:"alice".into(),salt:"test-salt".into(),hash:hash("test-password-123","test-salt"),enabled:true}]),sessions:Mutex::new(HashMap::new()),spaces:Mutex::new(HashMap::new()),queue:Arc::new(Semaphore::new(1)),pending:AtomicUsize::new(0),login_slots:Arc::new(Semaphore::new(2)),attempts:Mutex::new(HashMap::new())})}
- fn auth_headers(cookie:Option<&str>)->HeaderMap{let mut h=HeaderMap::new();h.insert(header::HOST,"localhost:8788".parse().unwrap());h.insert("x-edge-ipc","1".parse().unwrap());if let Some(c)=cookie{h.insert(header::COOKIE,c.parse().unwrap());}h}
+ fn auth_headers(cookie:Option<&str>)->HeaderMap{let mut h=HeaderMap::new();h.insert(header::HOST,"localhost:8788".parse().unwrap());h.insert("x-gvpak-ipc","1".parse().unwrap());if let Some(c)=cookie{h.insert(header::COOKIE,c.parse().unwrap());}h}
  async fn device_login(t:Arc<Team>,remember:bool)->String{
   let response=login(State(t),ConnectInfo("127.0.0.1:12345".parse().unwrap()),auth_headers(None),Json(json!({"username":"alice","password":"test-password-123","remember":remember}))).await;
   assert_eq!(response.status(),StatusCode::OK);let cookie=response.headers()[header::SET_COOKIE].to_str().unwrap();

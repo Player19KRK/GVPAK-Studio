@@ -3,15 +3,15 @@ from PIL import Image
 root=pathlib.Path(__file__).resolve().parents[1]
 lab=root/'backend'/('verification-team-'+secrets.token_hex(4));lab.mkdir()
 team=lab/'team';owner=lab/'owner'
-env={**os.environ,'EDGE_PORT':'8793','GVPAK_TEAM_PORT':'8794','GVPAK_TEAM_HOSTS':'localhost,127.0.0.1','GVPAK_DATA_ROOT':str(owner),'GVPAK_TEAM_ROOT':str(team),'GVPAK_PROFILE':'test','GVPAK_FEEDBACK_ROOT':str(lab/'feedback')}
-exe=root/'backend/target/release/edge-backend.exe'
+env={**os.environ,'GVPAK_PORT':'8793','GVPAK_TEAM_PORT':'8794','GVPAK_TEAM_HOSTS':'localhost,127.0.0.1','GVPAK_DATA_ROOT':str(owner),'GVPAK_TEAM_ROOT':str(team),'GVPAK_PROFILE':'test','GVPAK_FEEDBACK_ROOT':str(lab/'feedback')}
+exe=root/'backend/target/release/gvpak-studio.exe'
 p=subprocess.Popen([str(exe)],cwd=root,env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
 checks=[]
 def check(name,value):
  assert value,name
  checks.append(name)
 def call(base,path,data=None,opener=None,headers=None):
- headers={'X-Edge-IPC':'1',**(headers or {})}
+ headers={'X-GVPAK-IPC':'1',**(headers or {})}
  if data is not None:headers['Content-Type']='application/json'
  req=urllib.request.Request(base+path,data=None if data is None else json.dumps(data).encode(),headers=headers)
  try:
@@ -39,7 +39,7 @@ try:
  for c,name in [(a,'qa_alice'),(b,'qa_bob')]:
   status,_,headers=call(lan,'/api/team/login',{'username':name,'password':password},c);check('login '+name,status==200);check('secure HttpOnly cookie '+name,'Secure' in headers.get('Set-Cookie','') and 'HttpOnly' in headers.get('Set-Cookie',''))
  
- with httpx.Client(http2=True,verify=ctx,trust_env=False,headers={'X-Edge-IPC':'1'}) as browser:
+ with httpx.Client(http2=True,verify=ctx,trust_env=False,headers={'X-GVPAK-IPC':'1'}) as browser:
   r=browser.post(lan+'/api/team/login',json={'username':'qa_alice','password':password});check('HTTP2 browser login works',r.http_version=='HTTP/2' and r.status_code==200)
   r=browser.post(lan+'/api/invoke/bootstrap',json={});check('HTTP2 authenticated workspace works',r.status_code==200 and r.json()['projects']==[])
   r=browser.post(lan+'/api/invoke/import_paths',json={});check('HTTP2 keeps host file APIs blocked',r.status_code==403)

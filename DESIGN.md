@@ -1,7 +1,7 @@
-# EDGE visual system
+# GVPAK Studio visual system
 White and cool grey surfaces with signal red accents. Barlow Condensed wordmark/headings, compact neutral sans controls. Preserve the existing desktop editor language. Purposeful controls and brief English labels.
 
-The central workspace is a 2D image editor. No Three.js stage, city, camera orbit or tour. Coverflow uses the original GVPAK STUDIO 2 perspective mathematics and motion, with EDGE colors and controls. It is image navigation, not a separate 3D viewing mode.
+The central workspace is a 2D image editor. No Three.js stage, city, camera orbit or tour. Coverflow uses the original GVPAK STUDIO 2 perspective mathematics and motion, with GVPAK Studio colors and controls. It is image navigation, not a separate 3D viewing mode.
 
 Persistent header: project, Edit/Generate/Export/Settings, Process, Save and Export. Tool rail on the left, canvas and Coverflow centrally, collapsible inspector on the right. Workflow screens use the same type, spacing and control vocabulary. Narrow screens collapse inspector and wrap mode navigation. Respect reduced motion.
 
@@ -26,7 +26,7 @@ Image grid: click an image to toggle selection; double-click to edit. Keyboard S
 
 
 ## Radial painting menu
-Right-click only the image canvas to open a translucent EDGE wheel with three continuous sectors: Color, Brush, Eraser. Entering a child hides root sectors. Center returns one level; Escape returns one level, then closes. Clicking outside consumes the click. Position within the canvas when it fits, otherwise within the viewport. Preserve the image itself without blur.
+Right-click only the image canvas to open a translucent GVPAK Studio wheel with three continuous sectors: Color, Brush, Eraser. Entering a child hides root sectors. Center returns one level; Escape returns one level, then closes. Clicking outside consumes the click. Position within the canvas when it fits, otherwise within the viewport. Preserve the image itself without blur.
 
 Color uses three rings of 24 wedge cells, including one outlined eyedropper cell. Swatches are opaque. Choosing a color closes the menu and activates painting. Brush size, hardness and opacity extend as parallel short arcs outside the selected tool icon. Parameter mode has no background disk, outline ring or center button; clicking the retained tool icon returns to the root. Red handles use a circle for size, a diamond for hardness and a half-filled circle for opacity; wheel over a parameter adjusts only that parameter. Parameter menus stay open. Eraser exposes size and hardness and affects paint only. Honor reduced motion and keyboard focus.
 

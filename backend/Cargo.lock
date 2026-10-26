@@ -297,31 +297,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
-name = "edge-backend"
-version = "2.0.0"
-dependencies = [
- "axum",
- "axum-server",
- "base64 0.22.1",
- "futures-util",
- "image",
- "keyring",
- "pbkdf2",
- "rcgen",
- "reqwest",
- "rfd",
- "rustls",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tower-http",
- "uuid",
- "webp",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -487,6 +462,31 @@ name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
+name = "gvpak-studio"
+version = "2.0.0"
+dependencies = [
+ "axum",
+ "axum-server",
+ "base64 0.22.1",
+ "futures-util",
+ "image",
+ "keyring",
+ "pbkdf2",
+ "rcgen",
+ "reqwest",
+ "rfd",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tower-http",
+ "uuid",
+ "webp",
+]
 
 [[package]]
 name = "h2"

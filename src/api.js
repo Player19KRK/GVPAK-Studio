@@ -1,20 +1,21 @@
+import {readLocalSetting} from './branding-migration.js';
 import {chooseDirectory} from './local-downloads.js';
 export const teamUser=typeof window==='undefined'?null:window.__gvpakTeamUser||null;
 export const isTeam=!!teamUser;
 export async function api(name,args={}){if(isTeam){if(name==='pick_output')return chooseDirectory();if(name==='pick_import')return pickUpload(args.projectId,args.folder);if(name==='hybrid_open_output'){window.dispatchEvent(new Event('team-downloads'));return null;}}
-const res=await fetch(`/api/invoke/${name}`,{method:'POST',headers:{'Content-Type':'application/json','X-Edge-IPC':'1'},body:JSON.stringify(args)});if(res.status===401&&isTeam){location.reload();throw Error('Session expired');}if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw Error(errorText(e.error||'请求失败'));}return res.headers.get('content-type')?.includes('octet-stream')?res.blob():res.json();}
+const res=await fetch(`/api/invoke/${name}`,{method:'POST',headers:{'Content-Type':'application/json','X-GVPAK-IPC':'1'},body:JSON.stringify(args)});if(res.status===401&&isTeam){location.reload();throw Error('Session expired');}if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw Error(errorText(e.error||'请求失败'));}return res.headers.get('content-type')?.includes('octet-stream')?res.blob():res.json();}
 export async function imageUrl(name,args){return URL.createObjectURL(await api(name,args));}
 export async function upload(projectId,files){let total=null,items=[],size=0;
- async function send(){if(!items.length)return;const r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json','X-Edge-IPC':'1'},body:JSON.stringify({projectId,files:items})});const result=await r.json();if(!r.ok)throw Error(`已导入 ${total?.imported||0} 张。${result.error||'上传失败，请重试剩余图片。'}`);total={...result,imported:(total?.imported||0)+result.imported,skipped:[...(total?.skipped||[]),...result.skipped],errors:[...(total?.errors||[]),...result.errors]};items=[];size=0;}
+ async function send(){if(!items.length)return;const r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json','X-GVPAK-IPC':'1'},body:JSON.stringify({projectId,files:items})});const result=await r.json();if(!r.ok)throw Error(`已导入 ${total?.imported||0} 张。${result.error||'上传失败，请重试剩余图片。'}`);total={...result,imported:(total?.imported||0)+result.imported,skipped:[...(total?.skipped||[]),...result.skipped],errors:[...(total?.errors||[]),...result.errors]};items=[];size=0;}
  for(const file of files){if(file.size>30*1024*1024)throw Error(`${file.name} 超过单张 30 MB。请缩小此文件后再上传。`);if(size+file.size>42*1024*1024||items.length>=50)await send();const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file);});items.push({name:file.name,data});size+=file.size;}await send();return total;}
 export const initialEdit={adjustmentOpacity:1,adjustmentEnabled:true,exposure:0,contrast:1,saturation:1,temperature:0,rotation:0,flipH:false,flipV:false,crop:null,strokes:[]};
 export const clone=x=>JSON.parse(JSON.stringify(x));
 export const bytes=n=>n>=1e6?`${(n/1e6).toFixed(1)} MB`:`${Math.round(n/1000)} KB`;
 export const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
 export const hex=arr=>'#'+arr.map(n=>Math.round(n).toString(16).padStart(2,'0')).join('');
-export function stored(key,fallback){if(isTeam&&key==='assistant-output')return '浏览器下载目录';try{let value=JSON.parse(localStorage.getItem((isTeam?'gvpak-team-'+teamUser.id+'-':'edge-')+key))??fallback;if(isTeam&&key==='export')value={...value,outputDir:'浏览器下载目录'};return value;}catch{return fallback;}}
+export function stored(key,fallback){if(isTeam&&key==='assistant-output')return '浏览器下载目录';try{let value=JSON.parse(isTeam?localStorage.getItem('gvpak-team-'+teamUser.id+'-'+key):readLocalSetting(localStorage,key))??fallback;if(isTeam&&key==='export')value={...value,outputDir:'浏览器下载目录'};return value;}catch{return fallback;}}
 
-export const persist=(key,v)=>localStorage.setItem((isTeam?'gvpak-team-'+teamUser.id+'-':'edge-')+key,JSON.stringify(v));
+export const persist=(key,v)=>localStorage.setItem((isTeam?'gvpak-team-'+teamUser.id+'-':'gvpak-studio-')+key,JSON.stringify(v));
 
 function pickUpload(projectId,folder){return new Promise((resolve,reject)=>{const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='image/png,image/jpeg,image/webp';if(folder)input.setAttribute('webkitdirectory','');input.style.display='none';document.body.append(input);input.oncancel=()=>{input.remove();resolve(null);};input.onchange=async()=>{try{const files=[...input.files].filter(f=>/\.(png|jpe?g|webp)$/i.test(f.name));resolve(files.length?await upload(projectId,files):null);}catch(e){reject(e);}finally{input.remove();}};input.click();});}
 

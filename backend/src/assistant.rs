@@ -484,10 +484,9 @@ pub fn save_preset(store: &Store, name: String, plan: Plan) -> Res<()> {
     .map_err(|e| e.to_string())
 }
 pub fn credential() -> Res<keyring::Entry> {
-    let profile = std::env::var("GVPAK_PROFILE").unwrap_or("dev".into());
-    keyring::Entry::new(&format!("EDGE-STUDIO-{profile}"), "deepseek-official")
-        .map_err(|_| "KEYRING_UNAVAILABLE".into())
+    crate::branding::credential("deepseek-official")
 }
+
 const PROMPT: &str = r#"You are the GVPAK local image tool planner. Return a json object only: {"summary":"中文摘要","steps":[],"warnings":[],"clarification":null,"output":null}.
 Allowed steps (only these exact keys):
 {"op":"adjust","exposure":0.0,"contrast":1.0,"saturation":1.0,"temperature":0.0} exposure [-3,3] EV, contrast/saturation [0,3], temperature [-1,1].

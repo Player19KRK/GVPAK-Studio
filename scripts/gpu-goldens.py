@@ -1,10 +1,10 @@
 from pathlib import Path
 from PIL import Image
 import subprocess,os,time,urllib.request,json,uuid
-root=Path.cwd();fixtures=root/'docs/verification/gpu-qa/fixtures';env=os.environ.copy();testroot=root/'backend'/('gpu-qa-'+str(uuid.uuid4())[:8]);env.update(EDGE_PORT='8790',GVPAK_PROFILE='test',GVPAK_DATA_ROOT=str(testroot))
-p=subprocess.Popen([str(root/'bin/edge-studio.exe')],cwd=root,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+root=Path.cwd();fixtures=root/'docs/verification/gpu-qa/fixtures';env=os.environ.copy();testroot=root/'backend'/('gpu-qa-'+str(uuid.uuid4())[:8]);env.update(GVPAK_PORT='8790',GVPAK_PROFILE='test',GVPAK_DATA_ROOT=str(testroot))
+p=subprocess.Popen([str(root/'bin/gvpak-studio.exe')],cwd=root,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
 def api(name,args={},binary=False):
- req=urllib.request.Request('http://127.0.0.1:8790/api/invoke/'+name,data=json.dumps(args).encode(),headers={'Content-Type':'application/json','X-Edge-IPC':'1'})
+ req=urllib.request.Request('http://127.0.0.1:8790/api/invoke/'+name,data=json.dumps(args).encode(),headers={'Content-Type':'application/json','X-GVPAK-IPC':'1'})
  with urllib.request.urlopen(req,timeout=30) as r:
   data=r.read();return data if binary else json.loads(data)
 try:

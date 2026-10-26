@@ -19,7 +19,7 @@ class PackagingReportsTest(unittest.TestCase):
             required = [
                 'index.html', 'package.json', 'package-lock.json', 'vite.config.js',
                 'svelte.config.js', 'start.cmd', 'start.ps1', '一键启动.cmd', '开启局域网访问.cmd', 'enable-team-lan.ps1', 'README.md', 'PRODUCT.md',
-                'DESIGN.md', 'backend/Cargo.toml', 'backend/Cargo.lock', 'bin/edge-studio.exe',
+                'DESIGN.md', 'backend/Cargo.toml', 'backend/Cargo.lock', 'bin/gvpak-studio.exe',
                 'src/main.js', 'dist/index.html', 'backend/src/main.rs',
             ]
             for name in required:
@@ -56,7 +56,7 @@ class PackagingReportsTest(unittest.TestCase):
                 if existing_report:
                     self.assertEqual(zipped.read('docs/verification/browser-report.json'), evidence)
                 self.assertEqual(zipped.read('docs/verification/p2-release.json'), before[Path('docs/verification/p2-release.json')])
-                for name in ['src/main.js', 'backend/src/main.rs', 'dist/index.html', 'bin/edge-studio.exe']:
+                for name in ['src/main.js', 'backend/src/main.rs', 'dist/index.html', 'bin/gvpak-studio.exe']:
                     self.assertEqual(zipped.read(name), before[Path(name)])
                 self.assertNotIn('backend/studio-data/project.json', zipped.namelist())
                 self.assertNotIn('backend/team-private/accounts.json', zipped.namelist())

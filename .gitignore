@@ -32,3 +32,6 @@ backend/team-private/
 *.sqlite
 *.sqlite3
 *.db
+
+# Machine-local application settings (may contain private paths)
+bin/*settings-*.json

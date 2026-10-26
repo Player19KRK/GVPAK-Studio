@@ -18,7 +18,7 @@ pub mod runtime{
 }
 #[derive(Clone)]struct Server{shared:Shared,hub:AppHandle}
 fn allowed(h:&HeaderMap)->bool{
- h.get("x-edge-ipc").and_then(|x|x.to_str().ok())==Some("1") && h.get("origin").is_none_or(|v|matches!(v.to_str(),Ok("http://127.0.0.1:8787")|Ok("http://localhost:8787")|Ok("http://127.0.0.1:5173")|Ok("http://localhost:5173")))
+ h.get("x-gvpak-ipc").and_then(|x|x.to_str().ok())==Some("1") && h.get("origin").is_none_or(|v|matches!(v.to_str(),Ok("http://127.0.0.1:8787")|Ok("http://localhost:8787")|Ok("http://127.0.0.1:5173")|Ok("http://localhost:5173")))
 }
 async fn invoke(AxumState(s):AxumState<Server>,Path(name):Path<String>,h:HeaderMap,Json(v):Json<Value>)->Response{
  if !allowed(&h){return(StatusCode::FORBIDDEN,Json(json!({"error":"ORIGIN_REJECTED"}))).into_response()}
@@ -46,7 +46,7 @@ async fn events(AxumState(s):AxumState<Server>)->impl IntoResponse{
 pub async fn serve(shared:Shared,root:PathBuf){
  let (sender,_)=broadcast::channel(128);let hub=AppHandle{events:sender};crate::hybrid::spawn(hub.clone(),shared.clone());
  crate::team::launch(root.clone(), shared.clone());
- let server=Server{shared,hub};let router=Router::new().route("/api/team/session",get(||async{Json(json!({"team":false}))})).route("/api/health",get(||async{Json(json!({"service":"edge-rust","version":"2.0.0","status":"ok"}))})).route("/api/invoke/{name}",post(invoke)).route("/api/upload",post(upload)).route("/api/events",get(events)).layer(DefaultBodyLimit::max(128*1024*1024)).with_state(server).fallback_service(tower_http::services::ServeDir::new(root.join("dist")));
- let port=std::env::var("EDGE_PORT").unwrap_or("8787".into());let listener=tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await.expect("EDGE port is available");println!("EDGE Studio 2: http://127.0.0.1:{port}");axum::serve(listener,router).await.unwrap();
+ let server=Server{shared,hub};let router=Router::new().route("/api/team/session",get(||async{Json(json!({"team":false}))})).route("/api/health",get(||async{Json(json!({"service":"gvpak-studio","version":"2.0.0","status":"ok"}))})).route("/api/invoke/{name}",post(invoke)).route("/api/upload",post(upload)).route("/api/events",get(events)).layer(DefaultBodyLimit::max(128*1024*1024)).with_state(server).fallback_service(tower_http::services::ServeDir::new(root.join("dist")));
+ let port=std::env::var("GVPAK_PORT").unwrap_or("8787".into());let listener=tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await.expect("GVPAK Studio port is available");println!("GVPAK Studio: http://127.0.0.1:{port}");axum::serve(listener,router).await.unwrap();
 }
 

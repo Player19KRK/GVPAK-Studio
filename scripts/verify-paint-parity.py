@@ -7,7 +7,7 @@ fixtures=json.loads((root/'backend/target/paint-parity-fixtures.json').read_text
 report=[]
 def preview(edit):
     data={'projectId':state['projectId'],'assetId':state['assetId'],'edit':edit}
-    req=urllib.request.Request('http://127.0.0.1:8798/api/invoke/preview',json.dumps(data).encode(),{'Content-Type':'application/json','X-Edge-IPC':'1'})
+    req=urllib.request.Request('http://127.0.0.1:8798/api/invoke/preview',json.dumps(data).encode(),{'Content-Type':'application/json','X-GVPAK-IPC':'1'})
     return Image.open(io.BytesIO(urllib.request.urlopen(req).read())).convert('RGBA')
 for fixture in fixtures:
     base=list(preview({**fixture['edit'],'strokes':[]}).getdata())

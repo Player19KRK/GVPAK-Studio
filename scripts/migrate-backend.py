@@ -36,10 +36,10 @@ for m in re.finditer(r'#\[tauri::command\]\s*(async\s+)?fn\s+(\w+)\s*\((.*?)\)\s
 body=s[:s.index('fn main() {')]
 body=body.replace('#[tauri::command]','').replace('use tauri::{Emitter, State};','use transport::{State, AppHandle};\nmod transport;\nuse axum::response::IntoResponse;')
 body=body.replace('tauri::AppHandle','AppHandle').replace('tauri::async_runtime::','transport::runtime::').replace('tauri::ipc::Response::new','Vec::from').replace('tauri::ipc::Response','Vec<u8>')
-body=body.replace('GVPAK-STUDIO-2-{}','EDGE-STUDIO-{}').replace('gvpak-settings-{}','edge-settings-{}')
+body=body.replace('GVPAK-STUDIO-2-{}','GVPAK-STUDIO-{}').replace('gvpak-settings-{}','gvpak-studio-settings-{}')
 init=s[s.index('    let root =',s.index('fn main() {')):s.index('    tauri::Builder::default()')]
 init=init.replace('PathBuf::from("D:/AI/GVPAK-STUDIO2-DATA/dev")','project_root.join("backend/studio-data")')
-init=init.replace('include_bytes!("../../web/public/demo/','include_bytes!("../demo/').replace('光与石 · 建筑研究','Architecture').replace('GVPAK STUDIO','EDGE')
+init=init.replace('include_bytes!("../../web/public/demo/','include_bytes!("../demo/').replace('光与石 · 建筑研究','Architecture').replace('GVPAK STUDIO','GVPAK Studio')
 (root/'backend/src/main.rs').write_text(body+'\n#[tokio::main]\nasync fn main() {\n    let executable=std::env::current_exe().expect("Executable path");\n    let project_root=executable.ancestors().find(|p|p.join("dist/index.html").exists()).map(|p|p.to_path_buf()).unwrap_or_else(||std::env::current_dir().unwrap());\n'+init+'\n    transport::serve(shared,project_root).await;\n}\n',encoding='utf-8')
 (root/'docs/command-contract.json').write_text(json.dumps([{'command':n,'args':a} for n,a,_ in commands],ensure_ascii=False,indent=2),encoding='utf-8')
 # Derive the complete dispatch from the original command signatures, with no feature stubs.
@@ -48,7 +48,7 @@ with p.open('a',encoding='utf-8') as f:
  f.write('\nfn arg<T:serde::de::DeserializeOwned>(v:&Value,key:&str)->Res<T>{serde_json::from_value(v.get(key).cloned().unwrap_or(Value::Null)).map_err(|e|format!("INVALID_ARGUMENT {key}: {e}"))}\nfn binary(bytes:Vec<u8>)->axum::response::Response{([(axum::http::header::CONTENT_TYPE,"application/octet-stream")],bytes).into_response()}\npub async fn dispatch(s:Shared,hub:AppHandle,name:String,v:Value)->Res<axum::response::Response>{match name.as_str(){\n'+ '\n'.join(c[2] for c in commands)+'\n_=>Err("UNKNOWN_COMMAND".into())}}\n')
 for name in ['assistant.rs','hybrid.rs','models.rs']:
  p=root/'backend/src'/name;t=p.read_text(encoding='utf-8-sig');t=t.replace('tauri::async_runtime::','crate::transport::runtime::').replace('tauri::AppHandle','crate::transport::AppHandle').replace('use tauri::{Emitter, Manager};','')
- t=t.replace('GVPAK-STUDIO-2-{}','EDGE-STUDIO-{}').replace('../../../config/models.json','../../config/models.json')
+ t=t.replace('GVPAK-STUDIO-2-{}','GVPAK-STUDIO-{}').replace('../../../config/models.json','../../config/models.json')
  if name=='hybrid.rs':
   begin=t.index('                        if let Some(w) = app.get_webview_window');i=begin;level=0;started=False
   while i<len(t):

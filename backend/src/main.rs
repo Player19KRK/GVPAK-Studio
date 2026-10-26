@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod assistant;
+mod branding;
 mod core;
 mod paint;
 mod hybrid;
@@ -473,14 +474,7 @@ fn cancel_job(s: State<Shared>) {
     s.cancel.store(true, Ordering::Relaxed)
 }
 fn credential() -> Res<keyring::Entry> {
-    keyring::Entry::new(
-        &format!(
-            "EDGE-STUDIO-{}",
-            std::env::var("GVPAK_PROFILE").unwrap_or("dev".into())
-        ),
-        "google-official",
-    )
-    .map_err(|_| "KEYRING_UNAVAILABLE: Windows 凭据管理器不可用".into())
+    branding::credential("google-official")
 }
 
 fn credential_status() -> Res<bool> {
@@ -608,14 +602,10 @@ async fn generate(
 }
 
 fn settings_path() -> Res<PathBuf> {
-    Ok(std::env::current_exe()
-        .map_err(|e| e.to_string())?
-        .parent()
-        .ok_or("APP_PATH_UNAVAILABLE")?
-        .join(format!(
-            "edge-settings-{}.json",
-            std::env::var("GVPAK_PROFILE").unwrap_or("dev".into())
-        )))
+    let executable = std::env::current_exe().map_err(|_| "APP_PATH_UNAVAILABLE")?;
+    let directory = executable.parent().ok_or("APP_PATH_UNAVAILABLE")?;
+    let profile = std::env::var("GVPAK_PROFILE").unwrap_or("dev".into());
+    branding::settings_path(directory, &profile)
 }
 
 fn data_root_switch(s: State<Shared>, path: String) -> Res<Value> {
@@ -654,7 +644,7 @@ async fn main() {
         Ok(s) => s,
         Err(e) => {
             rfd::MessageDialog::new()
-                .set_title("EDGE")
+                .set_title("GVPAK Studio")
                 .set_description(&e)
                 .set_level(rfd::MessageLevel::Error)
                 .show();
