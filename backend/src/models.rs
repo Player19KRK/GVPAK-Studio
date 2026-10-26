@@ -86,7 +86,7 @@ pub fn parse(text: &str) -> Result<Catalog, String> {
     }
     Ok(catalog)
 }
-pub fn load(root: &Path) -> (Catalog, Option<String>) {
+fn load_raw(root: &Path) -> (Catalog, Option<String>) {
     let defaults =
         || parse(include_str!("../../config/models.json")).expect("bundled model catalog");
     match std::fs::read_to_string(root.join("models.json")) {
@@ -170,7 +170,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let (catalog, warning) = load(root.path());
         assert!(warning.is_none());
-        assert_eq!(catalog.models.len(), 3);
+        assert_eq!(catalog.models.len(), 5);
+        assert!(catalog.models.iter().any(|m|m.id=="GPT-Image-2.5-Flare"));
+        assert!(catalog.models.iter().any(|m|m.id=="GPT-Image-2.5-Sunburst"));
         let mut value = serde_json::to_value(&catalog).unwrap();
         value["models"][0]["inputUsdPerMillion"] = serde_json::json!(-1);
         std::fs::write(root.path().join("models.json"), value.to_string()).unwrap();
@@ -199,3 +201,5 @@ mod tests {
         assert!((bounds["maximumUsd"].as_f64().unwrap() - 0.048108).abs() < 1e-10);
     }
 }
+
+pub fn load(root:&Path)->(Catalog,Option<String>){let (mut c,w)=load_raw(root);let bundled=parse(include_str!("../../config/models.json")).expect("catalog");for m in bundled.models.into_iter().filter(|m|m.id.starts_with("GPT-Image-2.5-")){if !c.models.iter().any(|x|x.id==m.id){c.models.push(m)}}(c,w)}

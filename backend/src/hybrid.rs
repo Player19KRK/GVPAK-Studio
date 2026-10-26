@@ -26,6 +26,8 @@ fn now() -> u64 {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Generation {
+    #[serde(default)]
+    pub mode: String,
     pub prompt: String,
     pub model: String,
     pub resolution: String,
@@ -61,9 +63,9 @@ impl Recipe {
             return Err("INVALID_RECIPE".into());
         }
         if let Some(g) = &self.generation {
-            if g.prompt.trim().is_empty()
+            if !["", "batch", "realtime"].contains(&g.mode.as_str()) || g.prompt.trim().is_empty()
                 || g.prompt.len() > 16000
-                || g.resolution != "1K"
+                || !["1K","2K","4K"].contains(&g.resolution.as_str())
                 || !["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"].contains(&g.ratio.as_str())
             {
                 return Err("INVALID_GENERATION: 混合任务当前使用 1K 生图".into());
@@ -90,6 +92,8 @@ pub async fn plan(instruction: String, context: Value) -> Res<Value> {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub retention_status: Option<String>,
     pub asset_id: String,
     pub key: String,
     pub name: String,
@@ -204,7 +208,7 @@ pub fn start(
     {
         return Err("RECIPE_NEEDS_CLARIFICATION".into());
     }
-    if ids.is_empty() || ids.len() > 500 {
+    if ids.is_empty() {
         return Err("INVALID_SCOPE".into());
     }
     if !Path::new(&output).is_absolute() || !Path::new(&output).is_dir() {
@@ -241,6 +245,7 @@ pub fn start(
             .find(|a| a.id == aid && !a.trashed)
             .ok_or("ASSET_NOT_FOUND")?;
         items.push(Item {
+            retention_status:None,
             asset_id: aid,
             key: uuid::Uuid::new_v4().to_string(),
             name: a.name.clone(),
@@ -258,7 +263,7 @@ pub fn start(
         if !approved {
             return Err("COST_APPROVAL_REQUIRED".into());
         }
-        crate::credential()?
+        if crate::image_provider::is_poe(&g.model){crate::image_provider::credential()?.get_password().map_err(|_|"POE_KEY_REQUIRED")?;None}else{crate::credential()?
             .get_password()
             .map_err(|_| "GOOGLE_KEY_REQUIRED: 请先配置 Google 密钥")?;
         let c = models::load(&store.root).0;
@@ -271,14 +276,14 @@ pub fn start(
                     && m.ratios.contains(&g.ratio)
             })
             .ok_or("INVALID_MODEL_PARAMETERS")?;
-        Some(m)
+        Some(m)}
     } else {
         None
     };
     let estimated = price.as_ref().and_then(|m| {
         m.image_usd.get("1K").copied().flatten().map(|p| {
             (p + 1000. * m.input_usd_per_million / 1e6 + 1000. * m.text_usd_per_million / 1e6)
-                * 0.5
+                * if recipe.generation.as_ref().is_some_and(|g|g.mode=="realtime"){1.0}else{0.5}
                 * items.len() as f64
         })
     });
@@ -688,7 +693,7 @@ fn finish(s: &Shared, root: &Path, job: &mut Job) -> Res<()> {
             let version = if let Some(id) = prior {
                 id
             } else {
-                let metadata = json!({"hybridJobId":job.id,"itemKey":job.items[i].key,"recipe":job.recipe,"usageMetadata":job.items[i].usage,"priceSnapshot":job.price,"batchFactor":0.5});
+                let metadata = json!({"hybridJobId":job.id,"itemKey":job.items[i].key,"recipe":job.recipe,"usageMetadata":job.items[i].usage,"priceSnapshot":job.price,"batchFactor":if job.recipe.generation.as_ref().is_some_and(|g|g.mode=="realtime"||crate::image_provider::is_poe(&g.model)){1.0}else{0.5}});
                 if job.recipe.generation.is_some() {
                     store
                         .save_generated(&job.project_id, &job.items[i].asset_id, &im, metadata)?
@@ -729,6 +734,21 @@ fn finish(s: &Shared, root: &Path, job: &mut Job) -> Res<()> {
     }
     Ok(())
 }
+async fn immediate_tick(s:&Shared,root:&Path,job:&mut Job)->Res<()>{
+ let g=job.recipe.generation.clone().unwrap();
+ for i in 0..job.items.len(){if job.items[i].stage=="generating"{job.items[i].stage="uncertain".into();job.items[i].error=Some("服务曾中断，生成结果待确认。不会自动再次扣费提交。".into());}}
+ if dir(root,&job.id)?.join("cancel.request").exists(){job.state="cancelled".into();return save(root,job)}
+ if let Some(i)=job.items.iter().position(|i|i.stage=="ready"){
+  job.items[i].stage="generating".into();job.state="generating".into();save(root,job)?;
+  let input=fs::read(dir(root,&job.id)?.join(format!("{}-prepared.png",job.items[i].key))).map_err(|e|e.to_string())?;
+  match crate::image_provider::generate(&g.model,&g.prompt,Some(input),&g.resolution,&g.ratio).await{
+   Ok((im,v))=>{im.save(dir(root,&job.id)?.join(format!("{}-generated.png",job.items[i].key))).map_err(|e|e.to_string())?;job.items[i].usage=v.get("usageMetadata").cloned().unwrap_or(Value::Null);job.items[i].stage="generated".into();},
+   Err(e)=>{job.items[i].stage=if e.starts_with("NETWORK_OUTCOME_UNKNOWN"){"uncertain"}else{"failed"}.into();job.items[i].error=Some(e);}
+  }save(root,job)?;
+ }
+ finish(s,root,job)?;
+ job.state=if job.items.iter().any(|i|i.stage=="ready"){"queued"}else if job.items.iter().any(|i|i.stage=="uncertain"){"attention"}else if job.items.iter().all(|i|i.stage=="done"){"completed"}else if job.items.iter().any(|i|i.stage=="done"){"partial"}else{"failed"}.into();job.updated_at=now();save(root,job)
+}
 pub async fn tick(s: &Shared, root: &Path, job: &mut Job) -> Res<()> {
     if terminal(&job.state) {
         return Ok(());
@@ -738,6 +758,7 @@ pub async fn tick(s: &Shared, root: &Path, job: &mut Job) -> Res<()> {
         prepare(s, root, job)?;
     }
     cancelling = dir(root, &job.id)?.join("cancel.request").exists();
+    if job.recipe.generation.as_ref().is_some_and(|g|g.mode=="realtime"||crate::image_provider::is_poe(&g.model)){return immediate_tick(s,root,job).await;}
     if job.recipe.generation.is_some() {
         for index in 0..job.chunks.len() {
             if matches!(
@@ -927,7 +948,8 @@ pub async fn tick(s: &Shared, root: &Path, job: &mut Job) -> Res<()> {
     }
     save(root, job)
 }
-pub fn spawn(app: crate::transport::AppHandle, s: Shared) {
+pub fn spawn(app: crate::transport::AppHandle, s: Shared) { spawn_queued(app,s,None); }
+pub fn spawn_queued(app: crate::transport::AppHandle, s: Shared, queue: Option<std::sync::Arc<tokio::sync::Semaphore>>) {
     std::thread::spawn(move || {
         loop {
             let root = match locked(&s) {
@@ -936,6 +958,7 @@ pub fn spawn(app: crate::transport::AppHandle, s: Shared) {
             };
             if let Ok(mut jobs) = list(&root) {
                 for job in jobs.iter_mut().filter(|j| !terminal(&j.state)) {
+                    let _permit = queue.as_ref().map(|q| crate::transport::runtime::block_on(q.clone().acquire_owned()).expect("queue open"));
                     let previous = job.state.clone();
                     if let Err(e) = crate::transport::runtime::block_on(tick(&s, &root, job)) {
                         job.error = Some(e);
@@ -973,6 +996,7 @@ mod tests {
         .unwrap();
         let root = locked(&s).unwrap().root.clone();
         j.recipe.generation = Some(Generation {
+            mode: String::new(),
             prompt: "test".into(),
             model: "gemini-nano-banana-2.1".into(),
             resolution: "1K".into(),
@@ -1056,6 +1080,7 @@ mod tests {
         let s = std::sync::Arc::new(crate::AppState {
             store: std::sync::Mutex::new(store),
             cancel: AtomicBool::new(false),
+            local_job: std::sync::Mutex::new(()),
             preview_epoch: std::sync::atomic::AtomicU64::new(0),
         });
         (tmp, s, p.id, ids, recipe)
@@ -1142,6 +1167,7 @@ mod tests {
         .unwrap();
         let root = locked(&s).unwrap().root.clone();
         j.recipe.generation = Some(Generation {
+            mode: String::new(),
             prompt: "test".into(),
             model: "gemini-nano-banana-2.1".into(),
             resolution: "1K".into(),

@@ -41,7 +41,6 @@ init=s[s.index('    let root =',s.index('fn main() {')):s.index('    tauri::Buil
 init=init.replace('PathBuf::from("D:/AI/GVPAK-STUDIO2-DATA/dev")','project_root.join("backend/studio-data")')
 init=init.replace('include_bytes!("../../web/public/demo/','include_bytes!("../demo/').replace('光与石 · 建筑研究','Architecture').replace('GVPAK STUDIO','EDGE')
 (root/'backend/src/main.rs').write_text(body+'\n#[tokio::main]\nasync fn main() {\n    let executable=std::env::current_exe().expect("Executable path");\n    let project_root=executable.ancestors().find(|p|p.join("dist/index.html").exists()).map(|p|p.to_path_buf()).unwrap_or_else(||std::env::current_dir().unwrap());\n'+init+'\n    transport::serve(shared,project_root).await;\n}\n',encoding='utf-8')
-(root/'backend/src/dispatch.rs').write_text('\n'.join(c[2] for c in commands),encoding='utf-8')
 (root/'docs/command-contract.json').write_text(json.dumps([{'command':n,'args':a} for n,a,_ in commands],ensure_ascii=False,indent=2),encoding='utf-8')
 # Derive the complete dispatch from the original command signatures, with no feature stubs.
 p=root/'backend/src/main.rs'

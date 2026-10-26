@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod assistant;
 mod core;
+mod paint;
 mod hybrid;
 mod models;
-use base64::Engine;
+#[cfg(test)]
+mod p2_tests;
 use core::{Edit, ExportItem, ExportPreset, ImportReport, Project, Res, Store};
 use serde_json::{Value, json};
 use std::{
@@ -15,21 +17,31 @@ use std::{
 };
 use transport::{State, AppHandle};
 mod transport;
+mod team;
+mod retention;
+mod image_provider;
 use axum::response::IntoResponse;
 struct AppState {
     store: Mutex<Store>,
     cancel: AtomicBool,
+    local_job: Mutex<()>,
     preview_epoch: AtomicU64,
 }
 type Shared = Arc<AppState>;
 fn locked(s: &Shared) -> Res<std::sync::MutexGuard<'_, Store>> {
     s.store.lock().map_err(|_| "STORE_UNAVAILABLE".into())
 }
+fn begin_local_job(s: &Shared) -> Res<std::sync::MutexGuard<'_, ()>> {
+    let guard = s.local_job.try_lock().map_err(|_| "LOCAL_JOB_BUSY: Another local task is running. Wait for it to finish or cancel it.".to_string())?;
+    s.cancel.store(false, Ordering::Relaxed);
+    Ok(guard)
+}
 
 fn bootstrap(s: State<Shared>) -> Res<Value> {
     let store = locked(&s)?;
+    let (projects, warnings) = store.list_with_warnings();
     Ok(
-        json!({"projects":store.list()?,"dataRoot":store.root,"profile":store.profile,"version":"0.2.0"}),
+        json!({"projects":projects,"warnings":warnings,"dataRoot":store.root,"profile":store.profile,"version":"0.2.0"}),
     )
 }
 
@@ -48,7 +60,7 @@ async fn hybrid_plan(
     let context = {
         let store = locked(&s)?;
         let p = store.load(&project_id)?;
-        if ids.is_empty() || ids.len() > 500 {
+        if ids.is_empty() {
             return Err("INVALID_SCOPE".into());
         }
         let mut dims = std::collections::BTreeMap::<String, usize>::new();
@@ -155,7 +167,7 @@ async fn assistant_plan(
     let (context, root) = {
         let store = locked(&s)?;
         let p = store.load(&project_id)?;
-        if ids.is_empty() || ids.len() > 500 {
+        if ids.is_empty() {
             return Err("INVALID_SCOPE".into());
         }
         let mut dimensions = std::collections::BTreeMap::<String, usize>::new();
@@ -208,8 +220,8 @@ async fn assistant_apply(
     output_dir: Option<String>,
 ) -> Res<Value> {
     let state = s.inner().clone();
-    state.cancel.store(false, Ordering::Relaxed);
     transport::runtime::spawn_blocking(move || {
+        let _job = begin_local_job(&state)?;
         assistant::apply(
             &*locked(&state)?,
             &sample_id,
@@ -251,6 +263,7 @@ async fn pick_import(
 ) -> Res<Option<ImportReport>> {
     let s = s.inner().clone();
     transport::runtime::spawn_blocking(move || {
+        let _job = begin_local_job(&s)?;
         let paths = if folder {
             rfd::FileDialog::new()
                 .set_title("选择图片文件夹")
@@ -263,7 +276,6 @@ async fn pick_import(
                 .pick_files()
         };
         if let Some(paths) = paths {
-            s.cancel.store(false, Ordering::Relaxed);
             Ok(Some(locked(&s)?.import(
                 &project_id,
                 paths.iter().map(|p| p.to_string_lossy().into()).collect(),
@@ -291,7 +303,7 @@ async fn import_paths(
 ) -> Res<ImportReport> {
     let s = s.inner().clone();
     transport::runtime::spawn_blocking(move || {
-        s.cancel.store(false, Ordering::Relaxed);
+        let _job = begin_local_job(&s)?;
         locked(&s)?.import(&project_id, paths, &s.cancel, |done, total| {
             let _ = app.emit(
                 "job-progress",
@@ -431,6 +443,11 @@ async fn pick_output() -> Res<Option<String>> {
     .map_err(|e| e.to_string())?
 }
 
+async fn export_preview(s: State<'_, Shared>, project_id: String, asset_id: String, edit: Edit, preset: ExportPreset) -> Res<Value> {
+    let s = s.inner().clone();
+    transport::runtime::spawn_blocking(move || locked(&s)?.export_preview(&project_id, &asset_id, &edit, &preset))
+        .await.map_err(|e| e.to_string())?
+}
 async fn export_run(
     s: State<'_, Shared>,
     app: AppHandle,
@@ -440,7 +457,7 @@ async fn export_run(
 ) -> Res<Vec<ExportItem>> {
     let s = s.inner().clone();
     transport::runtime::spawn_blocking(move || {
-        s.cancel.store(false, Ordering::Relaxed);
+        let _job = begin_local_job(&s)?;
         locked(&s)?.export(&project_id, ids, preset, &s.cancel, |done, total| {
             let _ = app.emit(
                 "job-progress",
@@ -511,6 +528,14 @@ async fn credential_test() -> Res<String> {
     }
 }
 
+fn generation_target(store:&Store,project_id:&str,asset_id:&str,file:&std::path::Path)->Res<String>{
+    if !asset_id.is_empty(){return Ok(asset_id.into())}
+    use sha2::Digest;
+    let sha=format!("{:x}",sha2::Sha256::digest(std::fs::read(file).map_err(|e|e.to_string())?));
+    let imported=store.import(project_id,vec![file.to_string_lossy().into_owned()],&AtomicBool::new(false),|_,_|{})?;
+    imported.project.assets.iter().find(|a|a.sha256==sha&&!a.trashed).map(|a|a.id.clone()).ok_or_else(||format!("GENERATED_IMPORT_FAILED: {}",imported.errors.join("; ")))
+}
+
 async fn generate(
     s: State<'_, Shared>,
     project_id: String,
@@ -539,9 +564,6 @@ async fn generate(
     if !capability.resolutions.contains(&resolution) || !capability.ratios.contains(&ratio) {
         return Err("INVALID_MODEL_PARAMETERS: 模型不支持当前分辨率或宽高比".into());
     }
-    let key = credential()?
-        .get_password()
-        .map_err(|_| "KEY_NOT_CONFIGURED: 请先配置 Google 密钥")?;
     let state = s.inner().clone();
     let pid = project_id.clone();
     let input_asset_id = asset_id.clone();
@@ -559,51 +581,12 @@ async fn generate(
                 + estimated_output_tokens.unwrap_or(1000) as f64 * capability.text_usd_per_million
                     / 1e6
         });
-    let image = transport::runtime::spawn_blocking(move || {
+    let image = if asset_id.is_empty(){
+        locked(&s)?.load(&project_id)?;None
+    }else{Some(transport::runtime::spawn_blocking(move || {
         locked(&state)?.preview(&pid, &input_asset_id, edit)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    let body = json!({"contents":[{"role":"user","parts":[{"text":prompt},{"inlineData":{"mimeType":"image/png","data":base64::engine::general_purpose::STANDARD.encode(image)}}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"aspectRatio":ratio,"imageSize":resolution}}});
-    let response = reqwest::Client::new()
-        .post(format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        ))
-        .header("x-goog-api-key", key)
-        .json(&body)
-        .timeout(std::time::Duration::from_secs(180))
-        .send()
-        .await
-        .map_err(|_| "NETWORK_OUTCOME_UNKNOWN: 请求未取得结果，请检查账户用量后再决定是否重试")?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(format!(
-            "GOOGLE_API_ERROR: HTTP {}；未自动重试",
-            status.as_u16()
-        ));
-    }
-    let value: Value = response.json().await.map_err(|_| "INVALID_API_RESPONSE")?;
-    let parts = value["candidates"][0]["content"]["parts"]
-        .as_array()
-        .ok_or("NO_IMAGE: Google 未返回图片，可能触发安全限制")?;
-    let data = parts
-        .iter()
-        .find_map(|p| p["inlineData"]["data"].as_str())
-        .ok_or("NO_IMAGE: Google 未返回图像")?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .map_err(|_| "INVALID_IMAGE")?;
-    let mut limits = image::Limits::default();
-    limits.max_alloc = Some(600_000_000);
-    limits.max_image_width = Some(16000);
-    limits.max_image_height = Some(16000);
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|_| "INVALID_IMAGE")?;
-    reader.limits(limits);
-    let generated = reader
-        .decode()
-        .map_err(|_| "INVALID_IMAGE: 返回图片无法解码")?;
+    }).await.map_err(|e| e.to_string())??)};
+    let (generated,value)=image_provider::generate(&model,&prompt,image,&resolution,&ratio).await?;
     let store = locked(&s)?;
     if store.root != request_root {
         return Err("DATA_ROOT_CHANGED: 请求期间切换了数据目录，未将结果写入其他环境".into());
@@ -613,12 +596,12 @@ async fn generate(
     let name = uuid::Uuid::new_v4().to_string();
     let file = staging.join(format!("generated-{name}.png"));
     generated.save(&file).map_err(|e| e.to_string())?;
-    let actual_usd = models::actual_usd(capability, &value["usageMetadata"]);
-    let cost_bounds = models::cost_bounds(capability, &value["usageMetadata"]);
+    let actual_usd = if image_provider::is_poe(&model){None}else{models::actual_usd(capability, &value["usageMetadata"])};
+    let cost_bounds = if image_provider::is_poe(&model){None}else{models::cost_bounds(capability, &value["usageMetadata"])};
     std::fs::write(staging.join(format!("{name}-usage.json")),serde_json::to_vec_pretty(&json!({"model":model,"usageMetadata":value["usageMetadata"],"resolution":resolution,"prompt":prompt,"actualUsd":actual_usd,"priceSnapshot":capability})).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
     let metadata = json!({"model":model,"prompt":prompt,"resolution":resolution,"ratio":ratio,"inputEdit":input_edit,"usageMetadata":value["usageMetadata"],"estimatedUsd":estimated_usd,"actualUsd":actual_usd,"costBounds":cost_bounds,"priceSnapshot":capability});
-    let (project, version_id) =
-        store.save_generated(&project_id, &asset_id, &generated, metadata)?;
+    let asset_id=generation_target(&store,&project_id,&asset_id,&file)?;
+    let (project, version_id) = store.save_generated(&project_id, &asset_id, &generated, metadata)?;
     Ok(
         json!({"project":project,"versionId":version_id,"assetId":asset_id,"usage":value["usageMetadata"],"savedPath":file,"actualUsd":actual_usd}),
     )
@@ -678,11 +661,8 @@ async fn main() {
             return;
         }
     };
-    if store
-        .list()
-        .expect("project catalog read failed")
-        .is_empty()
-    {
+    let (projects, warnings) = store.list_with_warnings();
+    if projects.is_empty() && warnings.is_empty() {
         let p = store
             .create("Architecture".into())
             .expect("demo project");
@@ -716,6 +696,7 @@ async fn main() {
     let shared = Arc::new(AppState {
         store: Mutex::new(store),
         cancel: AtomicBool::new(false),
+        local_job: Mutex::new(()),
         preview_epoch: AtomicU64::new(0),
     });
 
@@ -725,6 +706,10 @@ async fn main() {
 fn arg<T:serde::de::DeserializeOwned>(v:&Value,key:&str)->Res<T>{serde_json::from_value(v.get(key).cloned().unwrap_or(Value::Null)).map_err(|e|format!("INVALID_ARGUMENT {key}: {e}"))}
 fn binary(bytes:Vec<u8>)->axum::response::Response{([(axum::http::header::CONTENT_TYPE,"application/octet-stream")],bytes).into_response()}
 pub(crate) async fn dispatch(s:Shared,hub:AppHandle,name:String,v:Value)->Res<axum::response::Response>{match name.as_str(){
+"poe_key_status"=>Ok(axum::Json(image_provider::credential()?.get_password().is_ok()).into_response()),
+"poe_key_set"=>{let key:String=arg(&v,"key")?;if key.trim().is_empty(){return Err("KEY_REQUIRED".into())}image_provider::credential()?.set_password(key.trim()).map_err(|e|e.to_string())?;Ok(axum::Json(true).into_response())},
+"poe_key_delete"=>{let _=image_provider::credential()?.delete_credential();Ok(axum::Json(true).into_response())},
+"export_preview" => Ok(axum::Json(export_preview(State(&s),arg(&v,"projectId")?,arg(&v,"assetId")?,arg(&v,"edit")?,arg(&v,"preset")?).await?).into_response()),
 "bootstrap" => Ok(axum::Json(serde_json::to_value(bootstrap(State(&s))?).map_err(|e|e.to_string())?).into_response()),
 "model_catalog" => Ok(axum::Json(serde_json::to_value(model_catalog(State(&s))?).map_err(|e|e.to_string())?).into_response()),
 "hybrid_plan" => Ok(axum::Json(serde_json::to_value(hybrid_plan(State(&s),arg(&v,"projectId")?,arg(&v,"ids")?,arg(&v,"instruction")?).await?).map_err(|e|e.to_string())?).into_response()),
@@ -742,6 +727,12 @@ pub(crate) async fn dispatch(s:Shared,hub:AppHandle,name:String,v:Value)->Res<ax
 "assistant_apply" => Ok(axum::Json(serde_json::to_value(assistant_apply(State(&s),hub.clone(),arg(&v,"sampleId")?,arg(&v,"outputDir")?).await?).map_err(|e|e.to_string())?).into_response()),
 "assistant_presets" => Ok(axum::Json(serde_json::to_value(assistant_presets(State(&s))?).map_err(|e|e.to_string())?).into_response()),
 "assistant_save_preset" => Ok(axum::Json(serde_json::to_value(assistant_save_preset(State(&s),arg(&v,"name")?,arg(&v,"plan")?)?).map_err(|e|e.to_string())?).into_response()),
+"project_delete"|"project_restore" => {
+ let id:String=arg(&v,"projectId")?;uuid::Uuid::parse_str(&id).map_err(|_|"INVALID_PROJECT_ID")?;
+ let store=locked(&s)?;if hybrid::list(&store.root)?.iter().any(|j|j.project_id==id&&!hybrid::terminal(&j.state)){return Err("PROJECT_HAS_ACTIVE_TASKS: 请先停止项目中的任务".into())}
+ let live=store.root.join("projects").join(&id);let trash=store.root.join("deleted-projects").join(&id);std::fs::create_dir_all(store.root.join("deleted-projects")).map_err(|e|e.to_string())?;
+ let (from,to)=if name=="project_delete"{(live,trash)}else{(trash,live)};if to.exists(){return Err("PROJECT_EXISTS".into())};std::fs::rename(from,to).map_err(|_|"PROJECT_NOT_FOUND")?;Ok(axum::Json(json!({"ok":true})).into_response())
+},
 "project_create" => Ok(axum::Json(serde_json::to_value(project_create(State(&s),arg(&v,"name")?)?).map_err(|e|e.to_string())?).into_response()),
 "project_rename" => Ok(axum::Json(serde_json::to_value(project_rename(State(&s),arg(&v,"projectId")?,arg(&v,"name")?)?).map_err(|e|e.to_string())?).into_response()),
 "pick_import" => Ok(axum::Json(serde_json::to_value(pick_import(State(&s),hub.clone(),arg(&v,"projectId")?,arg(&v,"folder")?).await?).map_err(|e|e.to_string())?).into_response()),
@@ -766,3 +757,14 @@ pub(crate) async fn dispatch(s:Shared,hub:AppHandle,name:String,v:Value)->Res<ax
 "generate" => Ok(axum::Json(serde_json::to_value(generate(State(&s),arg(&v,"projectId")?,arg(&v,"assetId")?,arg(&v,"edit")?,arg(&v,"prompt")?,arg(&v,"model")?,arg(&v,"resolution")?,arg(&v,"ratio")?,arg(&v,"approved")?,arg(&v,"estimatedInputTokens")?,arg(&v,"estimatedOutputTokens")?).await?).map_err(|e|e.to_string())?).into_response()),
 "data_root_switch" => Ok(axum::Json(serde_json::to_value(data_root_switch(State(&s),arg(&v,"path")?)?).map_err(|e|e.to_string())?).into_response()),
 _=>Err("UNKNOWN_COMMAND".into())}}
+
+#[cfg(test)]mod generation_target_tests{
+ use super::*;
+ #[test]fn text_result_imports_into_empty_project_and_reuses_identical_result(){
+  let temp=tempfile::tempdir().unwrap();let store=Store::open(temp.path().join("data"),"test").unwrap();let project=store.create("Text generation".into()).unwrap();
+  let file=temp.path().join("result.png");image::RgbaImage::from_pixel(12,8,image::Rgba([12,34,56,255])).save(&file).unwrap();
+  let aid=generation_target(&store,&project.id,"",&file).unwrap();assert_eq!(store.load(&project.id).unwrap().assets.len(),1);
+  assert_eq!(generation_target(&store,&project.id,"",&file).unwrap(),aid);
+  let (saved,version)=store.save_generated(&project.id,&aid,&image::open(&file).unwrap(),json!({"prompt":"fixture"})).unwrap();assert!(saved.assets[0].versions.iter().any(|v|v.id==version));
+ }
+}

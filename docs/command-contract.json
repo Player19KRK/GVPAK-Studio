@@ -478,5 +478,26 @@
         "type": "String"
       }
     ]
+  },
+  {
+    "command": "export_preview",
+    "args": [
+      {
+        "name": "projectId",
+        "type": "String"
+      },
+      {
+        "name": "assetId",
+        "type": "String"
+      },
+      {
+        "name": "edit",
+        "type": "Edit"
+      },
+      {
+        "name": "preset",
+        "type": "ExportPreset"
+      }
+    ]
   }
 ]

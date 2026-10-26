@@ -9,9 +9,9 @@ The bundled Windows x64 Rust executable serves the compiled interface and API. N
 The Three.js spatial preview has been removed. Coverflow follows the original GVPAK STUDIO 2 motion and selection behavior, styled to match EDGE.
 
 ## Workflows
-- Edit: local imports, color, free/ratio crop, transforms, comparison, zoom/pan, layers, RGB histogram and saved versions.
+- Edit: local imports, color, free/ratio crop, transforms, radial painting tools, comparison, zoom/pan, layers, RGB histogram and saved versions.
 - Projects: click EDGE or the project name. Create or rename projects, scroll stacked project covers, browse/multiselect images, trash/restore.
-- Generate: configure Google in Settings, enter a prompt, approve the individual request, then review/adopt a result.
+- Generate: configure the provider in Settings, enter a prompt, then click Generate directly and review/adopt the result. Clicking Generate submits a paid request; no additional approval checkbox is required. Estimated costs default to CNY using the exchange rate in Settings; saved currency preferences are retained.
 - Export: selected images, WebP/JPEG/PNG, crop/pad, dimensions, quality and byte limit, native output folder, per-image report and cancellation.
 - Process: automatic mixed tasks or editable local steps. Local steps can be sampled, compared, applied and saved as reusable presets. No API is required for manual local steps.
 - Settings: Windows Credential Manager, model catalog, currency/exchange rate, local tool status, data directory, optional notifications and shortcuts.
@@ -49,6 +49,8 @@ With the mouse over expanded Coverflow, tap Space to toggle the current image. H
 
 Space selection uses one fixed intent per press: start on an unchecked image to select; release and press on a checked image to deselect. Scrolling remains one image per step. Revisiting an image during the same hold never toggles it. The intent changes only after releasing Space and pressing again.
 
+While the pointer is over expanded Coverflow, hold Space and press Left/Right to select or deselect each visited image using the same fixed intent. Holding an arrow repeats one image per key event. Arrow keys and scrolling can be mixed; neither wraps at the ends. Release Space to return to ordinary arrow navigation.
+
 ## Responsive image preview
 The visible image has priority: show its available thumbnail/cache immediately, load a 1600px preview source after navigation settles, and use WebGL2 for interactive color, crop and transform feedback. Rust replaces the interactive result after a 220ms pause and remains authoritative for saved/exported pixels. Neutral edits reuse the source without a second render. Comparison originals load only when Compare opens; histograms run after the image in an idle callback. Queued obsolete previews are discarded. Already-running native work finishes and may populate the cache.
 
@@ -65,3 +67,20 @@ Process > Assistant includes Full workflow test, Catalog ready, JPEG under 500 K
 
 ## Natural scenario presets (2026-10-13)
 The verbose test instructions above are superseded by concise Chinese user scenarios, starting with 产品主图，800*800，100kb. Assistant planning receives separate application defaults: WebP unless explicitly overridden, pixel dimensions, KB as 1000 bytes, and product-hero intent as AI minimalist still-life photography. These defaults do not implement a histogram-driven enhancement engine or semantic product-boundary crop. Both remain pending evaluation of mature image-processing projects; the planner must disclose these limits and never invent pixel analysis.
+
+
+## Radial painting tools
+Right-click the image canvas to open Color, Brush and Eraser. The translucent sector wheel follows the EDGE theme. Color contains 71 swatches and an outlined image-eyedropper cell. Selecting a color returns to painting; parameter menus stay open.
+
+Brush size, hardness and opacity extend as parallel short arcs outside the selected tool icon, without a background panel. Red circle, diamond and half-circle handles distinguish the parameters. Drag a handle, scroll over its control, or focus it and use arrow keys. Click the retained tool icon to return to the wheel. Escape returns one menu level, then closes. Click Done to return to normal canvas interaction; hold Space to pan temporarily. The eraser affects paint only. Each stroke supports Undo/Redo, survives local draft recovery, and is included in saved versions and PNG/WebP/JPEG exports. Crops and transforms also transform the strokes; base color adjustments preserve the chosen paint color.
+
+Painting regressions: `node --conditions=browser --test scripts/test-paint.mjs`; Rust rendering tests are included in `cargo test`. The implementation decisions are in `docs/decisions-radial-paint-menu.md`.
+
+## Small-team LAN access
+Keep using `一键启动.cmd` on the host. Settings > Team access creates colleague accounts. Run `开启局域网访问.cmd` once to allow HTTPS 8788 from the Private local subnet. Colleagues install the host-provided certificate and sign in to the displayed HTTPS address. Uploads, exports, events and projects are account-isolated; API calls reuse host credentials. See [TEAM-LAN.md](docs/TEAM-LAN.md) for certificate setup, privacy boundaries and queue behavior.
+
+## 中文体验更新（2026-10-23）
+界面已改为中文，按清晰技术写作原则统一操作名称。支持本机保存目录、Process 子目录下载、批量分段上传、逐图进度、处理页选图、项目删除撤销、拖动浏览、实时与异步模式、Poe GPT Image 2.5，以及同事问题反馈。见 [本轮说明](docs/UX-2026-10-23.md)。Poe 需要主机配置自己的 API 密钥；本轮未执行付费供应商调用。
+
+## 同事图片临时处理
+同事选择本机目录后自动保存，写入与校验成功后清理主机对应副本。未保存内容保留 24 小时；本机个人项目、账号和问题汇总不清理。普通下载需本人确认保存，不能仅凭浏览器开始下载就删除。详见 [临时处理规则](docs/TEMPORARY-WORKSPACES.md)。

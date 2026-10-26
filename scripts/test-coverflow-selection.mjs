@@ -10,3 +10,25 @@ test('boundaries do not wrap and every event steps once',()=>{const s=setup();s.
 test('release then re-press removes visited selections without rechecking',()=>{const s=setup(['image-0']);s.q.press();s.q.wheel(120);s.q.wheel(120);assert.equal(s.current,'image-4');s.q.release();s.q.press();assert.equal(s.q.selecting,false);assert.equal(s.selected.includes('image-4'),false);s.q.wheel(-120);s.q.wheel(120);s.q.wheel(-120);s.q.wheel(-120);assert.deepEqual(s.selected,['image-0']);});
 test('selection gesture leaves already checked pictures checked when revisited',()=>{const s=setup(['image-3']);s.q.press();s.q.wheel(120);s.q.wheel(-120);s.q.press();assert.deepEqual(new Set(s.selected),new Set(['image-2','image-3']));assert.equal(s.q.selecting,true);});
 test('deselection stays latched across unselected pictures and small wheel events',()=>{const s=setup(['image-2','image-4']);s.q.press();s.q.wheel(10);assert.deepEqual(s.selected,['image-4']);s.q.wheel(120);assert.equal(s.selected.includes('image-3'),false);s.q.wheel(120);assert.deepEqual(s.selected,[]);s.q.wheel(-120);assert.deepEqual(s.selected,[]);});
+
+test('held Space and repeated arrow steps select every visited image, including on reversal',()=>{
+ const s=setup();s.q.press();for(let i=0;i<3;i++)s.q.step(1);s.q.step(-1);
+ assert.equal(s.current,'image-4');
+ assert.deepEqual(new Set(s.selected),new Set(['image-2','image-3','image-4','image-5']));
+});
+test('arrow steps keep the deselect intent until Space is released',()=>{
+ const s=setup(['image-1','image-2','image-3','image-4']);s.q.press();s.q.step(1);s.q.step(-1);s.q.step(-1);
+ assert.deepEqual(s.selected,['image-4']);s.q.release();s.q.press();s.q.step(1);
+ assert.deepEqual(new Set(s.selected),new Set(['image-1','image-2','image-4']));
+});
+test('arrow selection stops on release and clamps at both ends',()=>{
+ const s=setup();s.q.step(1);assert.equal(s.current,'image-2');s.q.press();
+ for(let i=0;i<20;i++)s.q.step(-1);assert.equal(s.current,'image-0');
+ for(let i=0;i<20;i++)s.q.step(1);assert.equal(s.current,'image-11');assert.equal(s.selected.length,12);
+ s.q.release();s.q.step(-1);assert.equal(s.current,'image-11');
+});
+test('mixing arrows and the wheel clears stale wheel delta and preserves selection intent',()=>{
+ const s=setup();s.q.press();s.q.wheel(30);s.q.step(1);s.q.wheel(10);
+ assert.equal(s.current,'image-3');s.q.wheel(30);assert.equal(s.current,'image-4');
+ s.q.step(-1);assert.deepEqual(new Set(s.selected),new Set(['image-2','image-3','image-4']));
+});

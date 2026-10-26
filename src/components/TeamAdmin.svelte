@@ -1,0 +1,10 @@
+<script>
+ import {onMount} from 'svelte';import {api} from '../api';let username=$state(''),password=$state(''),action=$state('create'),accounts=$state([]),urls=$state([]),error=$state(''),busy=$state(false);
+ async function refresh(){try{const r=await api('team_accounts');accounts=r.accounts;urls=r.urls.filter(u=>!u.includes('localhost')&&!u.includes('127.0.0.1'));}catch(e){error=e.message;}}
+ onMount(()=>{refresh();const timer=setInterval(refresh,10000);return ()=>clearInterval(timer);});
+ async function submit(){busy=true;error='';try{await api('team_accounts',{action,username,password});password='';await refresh();}catch(e){error=e.message;}finally{busy=false;}}
+ async function disable(username){busy=true;try{await api('team_accounts',{action:'disable',username});await refresh();}catch(e){error=e.message;}finally{busy=false;}}
+</script>
+<section class="settings-block"><h2>同事账号</h2>{#each urls as url}<p><a href={url} target="_blank" rel="noreferrer">{url}</a></p>{/each}<p class="hint">首次登录前，请让同事安装证书。账号分别保存图片，共用主机 API。</p><p class="hint">绿灯表示登录仍有效；关闭网页不会立即退出账号。每 10 秒更新。</p><form onsubmit={e=>{e.preventDefault();submit();}}><label>操作<select bind:value={action}><option value="create">创建账号</option><option value="reset">重置密码并启用</option></select></label><label>用户名<input bind:value={username} required pattern="[A-Za-z0-9_-]{3,32}" autocomplete="off"/></label><label>密码<input type="password" bind:value={password} required minlength="12" maxlength="128" autocomplete="new-password"/></label><button class="primary" disabled={busy}>保存账号</button></form>{#if error}<p role="alert">{error}</p>{/if}{#each accounts as a}<div class="shortcut"><span><i class="login-light" class:active={a.loggedIn} aria-hidden="true"></i>{a.username} · {a.enabled?(a.loggedIn?"已登录":"未登录"):"已停用"}</span><button disabled={busy||!a.enabled} onclick={()=>disable(a.username)}>停用</button></div>{/each}</section>
+
+<style>.login-light{display:inline-block;width:8px;height:8px;border-radius:50%;background:#a5aaa6;margin-right:8px}.login-light.active{background:#368453;box-shadow:0 0 0 3px #36845318}</style>

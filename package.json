@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "node scripts/check-svelte.mjs"
+    "check": "node scripts/check-svelte.mjs",
+    "test:p1": "node --conditions=browser --test scripts/test-p1-regressions.mjs",
+    "test:p2": "node --conditions=browser --test scripts/test-p2-regressions.mjs scripts/test-export-preview.mjs"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.2.0",

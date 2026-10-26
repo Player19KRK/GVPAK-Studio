@@ -10,7 +10,7 @@ impl<'a,T> State<'a,T>{pub fn inner(&self)->&'a T{self.0}}
 impl<T> Deref for State<'_,T>{type Target=T;fn deref(&self)->&T{self.0}}
 impl<'a,T> From<&'a T> for State<'a,T>{fn from(v:&'a T)->Self{Self(v)}}
 #[derive(Clone)]
-pub struct AppHandle{events:broadcast::Sender<Value>}
+pub struct AppHandle{pub(crate) events:broadcast::Sender<Value>}
 impl AppHandle {pub fn emit<T:Serialize>(&self,name:&str,payload:T)->Res<()>{let _=self.events.send(json!({"event":name,"payload":payload}));Ok(())}}
 pub mod runtime{
  pub use tokio::task::spawn_blocking;
@@ -22,15 +22,17 @@ fn allowed(h:&HeaderMap)->bool{
 }
 async fn invoke(AxumState(s):AxumState<Server>,Path(name):Path<String>,h:HeaderMap,Json(v):Json<Value>)->Response{
  if !allowed(&h){return(StatusCode::FORBIDDEN,Json(json!({"error":"ORIGIN_REJECTED"}))).into_response()}
+ if name=="submit_feedback" { return crate::team::host_feedback(v); }
+ if name=="team_accounts" { return crate::team::manage(v).await; }
  match crate::dispatch(s.shared,s.hub,name,v).await{Ok(r)=>r,Err(e)=>(StatusCode::BAD_REQUEST,Json(json!({"error":e}))).into_response()}
 }
 async fn upload(AxumState(s):AxumState<Server>,h:HeaderMap,Json(v):Json<Value>)->Response{
  if !allowed(&h){return StatusCode::FORBIDDEN.into_response()}
  let result=tokio::task::spawn_blocking(move||->Res<Value>{
+  let _job=crate::begin_local_job(&s.shared)?;
   let id=v["projectId"].as_str().ok_or("PROJECT_REQUIRED")?;let items=v["files"].as_array().ok_or("FILES_REQUIRED")?;
   let temp=tempfile::tempdir().map_err(|e|e.to_string())?;let mut paths=Vec::new();
   for (i,item) in items.iter().enumerate(){let name=PathBuf::from(item["name"].as_str().ok_or("NAME_REQUIRED")?);let file=name.file_name().ok_or("INVALID_NAME")?.to_string_lossy();let dir=temp.path().join(i.to_string());std::fs::create_dir_all(&dir).map_err(|e|e.to_string())?;let path=dir.join(file.as_ref());let bytes=base64::engine::general_purpose::STANDARD.decode(item["data"].as_str().ok_or("DATA_REQUIRED")?).map_err(|_|"INVALID_DATA")?;std::fs::write(&path,bytes).map_err(|e|e.to_string())?;paths.push(path.to_string_lossy().to_string());}
-  s.shared.cancel.store(false,std::sync::atomic::Ordering::Relaxed);
   let report=crate::locked(&s.shared)?.import(id,paths,&s.shared.cancel,|done,total|{let _=s.hub.emit("job-progress",json!({"kind":"import","done":done,"total":total}));})?;
   serde_json::to_value(report).map_err(|e|e.to_string())
  }).await;
@@ -43,7 +45,8 @@ async fn events(AxumState(s):AxumState<Server>)->impl IntoResponse{
 }
 pub async fn serve(shared:Shared,root:PathBuf){
  let (sender,_)=broadcast::channel(128);let hub=AppHandle{events:sender};crate::hybrid::spawn(hub.clone(),shared.clone());
- let server=Server{shared,hub};let router=Router::new().route("/api/health",get(||async{Json(json!({"service":"edge-rust","version":"2.0.0","status":"ok"}))})).route("/api/invoke/{name}",post(invoke)).route("/api/upload",post(upload)).route("/api/events",get(events)).layer(DefaultBodyLimit::max(128*1024*1024)).with_state(server).fallback_service(tower_http::services::ServeDir::new(root.join("dist")));
+ crate::team::launch(root.clone(), shared.clone());
+ let server=Server{shared,hub};let router=Router::new().route("/api/team/session",get(||async{Json(json!({"team":false}))})).route("/api/health",get(||async{Json(json!({"service":"edge-rust","version":"2.0.0","status":"ok"}))})).route("/api/invoke/{name}",post(invoke)).route("/api/upload",post(upload)).route("/api/events",get(events)).layer(DefaultBodyLimit::max(128*1024*1024)).with_state(server).fallback_service(tower_http::services::ServeDir::new(root.join("dist")));
  let port=std::env::var("EDGE_PORT").unwrap_or("8787".into());let listener=tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await.expect("EDGE port is available");println!("EDGE Studio 2: http://127.0.0.1:{port}");axum::serve(listener,router).await.unwrap();
 }
 

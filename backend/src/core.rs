@@ -1,4 +1,5 @@
 use image::{DynamicImage, ImageDecoder, ImageReader, Rgba, RgbaImage, imageops::FilterType};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -29,6 +30,8 @@ fn valid_id(value: &str) -> Res<()> {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Edit {
+    #[serde(default)]
+    pub strokes: Vec<crate::paint::Stroke>,
     #[serde(default = "default_opacity")]
     pub adjustment_opacity: f32,
     #[serde(default = "default_enabled")]
@@ -51,6 +54,7 @@ fn default_enabled() -> bool {
 impl Default for Edit {
     fn default() -> Self {
         Self {
+            strokes: Vec::new(),
             adjustment_opacity: 1.,
             adjustment_enabled: true,
             exposure: 0.,
@@ -66,6 +70,7 @@ impl Default for Edit {
 }
 impl Edit {
     fn validate(&self) -> Res<()> {
+        crate::paint::validate(&self.strokes)?;
         if !(0.0..=1.0).contains(&self.adjustment_opacity)
             || !self.exposure.is_finite()
             || !(-3.0..=3.).contains(&self.exposure)
@@ -152,6 +157,18 @@ pub struct ExportPreset {
     pub output_dir: String,
     pub background: [u8; 3],
 }
+impl ExportPreset {
+    fn validate(&self) -> Res<()> {
+        if !["png", "jpeg", "webp"].contains(&self.format.as_str())
+            || !["crop", "pad"].contains(&self.fit.as_str())
+            || self.width == 0 || self.height == 0 || self.width > 16000 || self.height > 16000
+            || self.width as u64 * self.height as u64 > 120_000_000
+            || self.quality == 0 || self.quality > 100 {
+            return Err(err("INVALID_EXPORT", "导出尺寸、格式或适配方式无效"));
+        }
+        Ok(())
+    }
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportItem {
@@ -166,6 +183,12 @@ pub struct Store {
     pub root: PathBuf,
     pub profile: String,
     _lock: fs::File,
+}
+#[derive(Serialize, Deserialize)]
+struct TrashMove {
+    asset_id: String,
+    from: String,
+    to: String,
 }
 impl Store {
     pub fn open(root: PathBuf, profile: &str) -> Res<Self> {
@@ -230,7 +253,59 @@ impl Store {
         if v.id != p {
             return Err(err("PROJECT_CORRUPT", "项目 ID 不一致"));
         }
+        self.recover_trash(&v)?;
         Ok(v)
+    }
+    fn save_trash_transaction(&self, pid: &str, moves: &[TrashMove]) -> Res<()> {
+        let dir = self.dir(pid)?;
+        let mut file = tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())?;
+        file.write_all(&serde_json::to_vec(moves).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        file.as_file().sync_all().map_err(|e| e.to_string())?;
+        file.persist(dir.join("trash-transaction.json")).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    fn recover_trash(&self, project: &Project) -> Res<()> {
+        let dir = self.dir(&project.id)?;
+        let journal = dir.join("trash-transaction.json");
+        let bytes = match fs::read(&journal) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(err("TRASH_RECOVERY_PENDING", e)),
+        };
+        let moves: Vec<TrashMove> = serde_json::from_slice(&bytes)
+            .map_err(|e| err("TRASH_RECOVERY_PENDING", e))?;
+        // The atomically saved project index decides whether to keep or roll back the moves.
+        // Keep the journal if recovery is blocked, so reopening can safely retry it.
+        for step in moves.iter().rev() {
+            valid_id(&step.asset_id)?;
+            for relative in [&step.from, &step.to] {
+                let parts: Vec<_> = Path::new(relative).components().collect();
+                if parts.len() != 2
+                    || !matches!(parts[0], std::path::Component::Normal(p) if p == "originals" || p == "trash")
+                    || !matches!(parts[1], std::path::Component::Normal(_))
+                {
+                    return Err("TRASH_RECOVERY_PENDING: invalid journal path".into());
+                }
+            }
+            if Path::new(&step.from).file_name() != Path::new(&step.to).file_name() || step.from == step.to {
+                return Err("TRASH_RECOVERY_PENDING: invalid move".into());
+            }
+            let asset = project.assets.iter().find(|a| a.id == step.asset_id)
+                .ok_or("TRASH_RECOVERY_PENDING: asset missing from index")?;
+            if asset.original == step.to { continue; } // Index commit already succeeded.
+            if asset.original != step.from {
+                return Err("TRASH_RECOVERY_PENDING: index does not match journal".into());
+            }
+            let from = dir.join(&step.from);
+            let to = dir.join(&step.to);
+            if !to.try_exists().map_err(|e| err("TRASH_RECOVERY_PENDING", e))? { continue; }
+            if from.try_exists().map_err(|e| err("TRASH_RECOVERY_PENDING", e))? {
+                return Err("TRASH_RECOVERY_PENDING: both file locations exist".into());
+            }
+            fs::rename(&to, &from).map_err(|e| err("TRASH_RECOVERY_PENDING", e))?;
+        }
+        fs::remove_file(journal).map_err(|e| err("TRASH_RECOVERY_PENDING", e))
     }
     fn save(&self, p: &Project) -> Res<()> {
         let dir = self.dir(&p.id)?;
@@ -244,18 +319,30 @@ impl Store {
         Ok(())
     }
     pub fn list(&self) -> Res<Vec<Project>> {
+        Ok(self.list_with_warnings().0)
+    }
+    pub fn list_with_warnings(&self) -> (Vec<Project>, Vec<String>) {
         let mut list = Vec::new();
-        for entry in fs::read_dir(self.root.join("projects")).map_err(|e| e.to_string())? {
-            let e = entry.map_err(|e| e.to_string())?;
-            if e.file_type().map_err(|e| e.to_string())?.is_dir() {
+        let mut warnings = Vec::new();
+        let directory = self.root.join("projects");
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(e) => return (list, vec![format!("{}: {e}", directory.display())]),
+        };
+        for entry in entries {
+            let e = match entry { Ok(e) => e, Err(e) => { warnings.push(e.to_string()); continue; } };
+            if e.path().is_dir() {
                 let name = e.file_name().to_string_lossy().to_string();
                 if valid_id(&name).is_ok() {
-                    list.push(self.load(&name)?);
+                    match self.load(&name) {
+                        Ok(project) => list.push(project),
+                        Err(error) => warnings.push(format!("{}: {error}", e.path().join("project.json").display())),
+                    }
                 }
             }
         }
         list.sort_by_key(|p| std::cmp::Reverse(p.updated_at));
-        Ok(list)
+        (list, warnings)
     }
     pub fn create(&self, name: String) -> Res<Project> {
         let name = name.trim();
@@ -538,7 +625,7 @@ impl Store {
                 .load(pid)?
                 .assets
                 .iter()
-                .any(|a| a.id == aid && a.versions.iter().any(|v| v.id == vid && v.kind == "local"))
+                .any(|a| a.id == aid && a.versions.iter().any(|v| v.id == vid && matches!(v.kind.as_str(), "local" | "generated")))
             {
                 return self.adopt_generated(pid, aid, vid);
             }
@@ -621,22 +708,57 @@ impl Store {
     }
     pub fn trash(&self, pid: &str, ids: Vec<String>, restore: bool) -> Res<Project> {
         let mut p = self.load(pid)?;
+        let dir = self.dir(pid)?;
+        let mut moves: Vec<TrashMove> = Vec::new();
         for aid in ids {
             valid_id(&aid)?;
-            if let Some(a) = p.assets.iter_mut().find(|a| a.id == aid) {
+            if moves.iter().any(|step| step.asset_id == aid) { continue; }
+            if let Some(a) = p.assets.iter().find(|a| a.id == aid) {
                 if a.trashed == restore {
-                    let old = self.dir(pid)?.join(&a.original);
+                    let old = dir.join(&a.original);
                     let filename = old.file_name().ok_or("INVALID_PATH")?.to_string_lossy();
                     let new = format!("{}/{filename}", if restore { "originals" } else { "trash" });
-                    fs::rename(&old, self.dir(pid)?.join(&new)).map_err(|e| e.to_string())?;
-                    a.original = new;
-                    a.trashed = !restore;
+                    // Never overwrite an existing destination, including on Unix.
+                    if dir.join(&new).try_exists().map_err(|e| e.to_string())? {
+                        return Err("TRASH_DESTINATION_EXISTS".into());
+                    }
+                    moves.push(TrashMove { asset_id: aid, from: a.original.clone(), to: new });
                 }
             }
         }
-        p.updated_at = now();
-        self.save(&p)?;
-        Ok(p)
+        if moves.is_empty() { return Ok(p); }
+        self.save_trash_transaction(pid, &moves)?;
+        let result = (|| -> Res<()> {
+            for step in &moves {
+                fs::rename(dir.join(&step.from), dir.join(&step.to)).map_err(|e| e.to_string())?;
+                let a = p.assets.iter_mut().find(|a| a.id == step.asset_id).ok_or("ASSET_NOT_FOUND")?;
+                a.original = step.to.clone();
+                a.trashed = !restore;
+            }
+            p.updated_at = now();
+            self.save(&p)
+        })();
+        // load() reconciles files against the index on success, failure and after a restart.
+        let recovered = self.load(pid);
+        match result {
+            Ok(()) => recovered,
+            Err(error) => match recovered {
+                Ok(_) => Err(error),
+                Err(recovery) => Err(format!("{error}; {recovery}")),
+            },
+        }
+    }
+    pub fn export_preview(&self, pid: &str, aid: &str, edit: &Edit, preset: &ExportPreset) -> Res<serde_json::Value> {
+        preset.validate()?;
+        let p = self.load(pid)?;
+        let source = self.source(&p, aid)?;
+        let before = png(&render(source.clone(), edit, Some(1600))?)?;
+        let (data, quality) = export_pixels(source, edit, preset)?;
+        let status = if preset.max_bytes > 0 && data.len() as u64 > preset.max_bytes { "EXPORT_TARGET_UNREACHABLE" } else { "ok" };
+        Ok(serde_json::json!({"data":base64::engine::general_purpose::STANDARD.encode(&data),
+            "before":base64::engine::general_purpose::STANDARD.encode(before),
+            "mime":format!("image/{}",preset.format),"bytes":data.len(),"quality":quality,
+            "width":preset.width,"height":preset.height,"status":status}))
     }
     pub fn export(
         &self,
@@ -646,18 +768,7 @@ impl Store {
         cancel: &AtomicBool,
         progress: impl Fn(usize, usize),
     ) -> Res<Vec<ExportItem>> {
-        if !["png", "jpeg", "webp"].contains(&preset.format.as_str())
-            || !["crop", "pad"].contains(&preset.fit.as_str())
-            || preset.width == 0
-            || preset.height == 0
-            || preset.width > 16000
-            || preset.height > 16000
-            || preset.width as u64 * preset.height as u64 > 120_000_000
-            || preset.quality == 0
-            || preset.quality > 100
-        {
-            return Err(err("INVALID_EXPORT", "导出尺寸、格式或适配方式无效"));
-        }
+        preset.validate()?;
         let dir = PathBuf::from(&preset.output_dir);
         if !dir.is_absolute() || !dir.is_dir() {
             return Err(err("PATH_NOT_WRITABLE", "请选择已存在的输出目录"));
@@ -676,18 +787,7 @@ impl Store {
                 .ok_or("ASSET_NOT_FOUND")?
                 .clone();
             let attempt = (|| -> Res<(Option<String>, usize, u8, String)> {
-                let im = render(self.source(&p, aid)?, &a.edit, None)?;
-                let mut im = fit(
-                    &im,
-                    preset.width,
-                    preset.height,
-                    preset.fit == "pad",
-                    preset.background,
-                );
-                if preset.format == "jpeg" {
-                    im = flatten(&im, preset.background)
-                }
-                let (data, q) = encode_target(&im, &preset)?;
+                let (data, q) = export_pixels(self.source(&p, aid)?, &a.edit, &preset)?;
                 if preset.max_bytes > 0 && data.len() as u64 > preset.max_bytes {
                     return Ok((None, data.len(), q, "EXPORT_TARGET_UNREACHABLE".into()));
                 }
@@ -764,7 +864,7 @@ impl Store {
     }
 }
 fn collect(path: &Path, files: &mut Vec<PathBuf>, errors: &mut Vec<String>, depth: usize) {
-    if depth > 32 || files.len() >= 5000 {
+    if depth > 32 {
         errors.push("IMPORT_LIMIT: 单次最多 5000 个文件、32 层目录".into());
         return;
     }
@@ -817,6 +917,7 @@ pub fn decode(path: &Path) -> Res<DynamicImage> {
 }
 pub fn render(mut im: DynamicImage, e: &Edit, max: Option<u32>) -> Res<DynamicImage> {
     e.validate()?;
+    let source_size = (im.width(), im.height());
     if let Some([x, y, w, h]) = e.crop {
         let iw = im.width();
         let ih = im.height();
@@ -870,6 +971,7 @@ pub fn render(mut im: DynamicImage, e: &Edit, max: Option<u32>) -> Res<DynamicIm
             p[i] = ((c[i] + (v.clamp(0., 1.) - c[i]) * strength) * 255.).round() as u8;
         }
     }
+    crate::paint::composite(&mut pixels, e, source_size);
     Ok(DynamicImage::ImageRgba8(pixels))
 }
 pub(crate) fn png(im: &DynamicImage) -> Res<Vec<u8>> {
@@ -890,7 +992,7 @@ pub(crate) fn fit(im: &DynamicImage, w: u32, h: u32, pad: bool, bg: [u8; 3]) -> 
     }
     let small = im.resize(w, h, FilterType::Lanczos3);
     let mut canvas = RgbaImage::from_pixel(w, h, Rgba([bg[0], bg[1], bg[2], 255]));
-    image::imageops::overlay(
+    image::imageops::replace(
         &mut canvas,
         &small,
         ((w - small.width()) / 2) as i64,
@@ -915,6 +1017,12 @@ fn encode(im: &DynamicImage, format: &str, q: u8) -> Res<Vec<u8>> {
         }
         _ => Err("UNSUPPORTED_FORMAT".into()),
     }
+}
+fn export_pixels(source: DynamicImage, edit: &Edit, preset: &ExportPreset) -> Res<(Vec<u8>, u8)> {
+    let im = render(source, edit, None)?;
+    let mut im = fit(&im, preset.width, preset.height, preset.fit == "pad", preset.background);
+    if preset.format == "jpeg" { im = flatten(&im, preset.background); }
+    encode_target(&im, preset)
 }
 pub(crate) fn encode_target(im: &DynamicImage, p: &ExportPreset) -> Res<(Vec<u8>, u8)> {
     let initial = encode(im, &p.format, p.quality)?;
@@ -942,6 +1050,127 @@ pub(crate) fn encode_target(im: &DynamicImage, p: &ExportPreset) -> Res<(Vec<u8>
     }
     Ok(best.unwrap_or(closest))
 }
+#[cfg(test)]
+mod trash_regressions {
+    use super::*;
+
+    fn fixture() -> (tempfile::TempDir, Store, Project) {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::open(tmp.path().join("data"), "test").unwrap();
+        let project = store.create("trash regression".into()).unwrap();
+        let paths = (0..2).map(|i| {
+            let path = tmp.path().join(format!("source-{i}.png"));
+            RgbaImage::from_pixel(4, 4, Rgba([i * 100, 20, 30, 255])).save(&path).unwrap();
+            path.to_string_lossy().into_owned()
+        }).collect();
+        let project = store.import(&project.id, paths, &AtomicBool::new(false), |_, _| {}).unwrap().project;
+        (tmp, store, project)
+    }
+
+    #[test]
+    fn second_move_failure_preserves_first_asset_on_trash_and_restore() {
+        for restore in [false, true] {
+            let (_tmp, store, mut project) = fixture();
+            let ids: Vec<_> = project.assets.iter().map(|a| a.id.clone()).collect();
+            if restore { project = store.trash(&project.id, ids.clone(), false).unwrap(); }
+            let dir = store.dir(&project.id).unwrap();
+            let second = dir.join(&project.assets[1].original);
+            let held = dir.join("held.png");
+            fs::rename(&second, &held).unwrap();
+            assert!(store.trash(&project.id, ids.clone(), restore).is_err());
+            assert!(dir.join(&project.assets[0].original).is_file(), "first file must still match the saved index");
+            fs::rename(&held, &second).unwrap();
+            let saved = store.load(&project.id).unwrap();
+            assert_eq!(saved.assets[0].original, project.assets[0].original);
+            assert_eq!(saved.assets[0].trashed, project.assets[0].trashed);
+            let retried = store.trash(&project.id, ids, restore).unwrap();
+            assert!(retried.assets.iter().all(|a| a.trashed == !restore && dir.join(&a.original).is_file()));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn index_save_failure_rolls_back_all_moves() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (_tmp, store, project) = fixture();
+        let dir = store.dir(&project.id).unwrap();
+        // Allow reads but deny replacement of project.json, as another Windows app can do.
+        let index_lock = fs::OpenOptions::new().read(true).share_mode(1).open(dir.join("project.json")).unwrap();
+        let ids = project.assets.iter().map(|a| a.id.clone()).collect();
+        assert!(store.trash(&project.id, ids, false).is_err());
+        assert!(project.assets.iter().all(|a| dir.join(&a.original).is_file()), "failed index commit must restore every original path");
+        drop(index_lock);
+        let saved = store.load(&project.id).unwrap();
+        assert!(saved.assets.iter().all(|a| !a.trashed));
+    }
+
+    fn moves_for(project: &Project) -> Vec<TrashMove> {
+        project.assets.iter().map(|a| TrashMove {
+            asset_id: a.id.clone(),
+            from: a.original.clone(),
+            to: format!("trash/{}", Path::new(&a.original).file_name().unwrap().to_string_lossy()),
+        }).collect()
+    }
+
+    #[test]
+    fn reopen_rolls_back_an_interrupted_move_before_index_commit() {
+        let (_tmp, store, project) = fixture();
+        let root = store.root.clone();
+        let dir = store.dir(&project.id).unwrap();
+        let moves = moves_for(&project);
+        let original = fs::read(dir.join(&moves[0].from)).unwrap();
+        store.save_trash_transaction(&project.id, &moves).unwrap();
+        fs::rename(dir.join(&moves[0].from), dir.join(&moves[0].to)).unwrap();
+        drop(store); // Persist exactly the state left by interruption after the first move.
+        let reopened = Store::open(root, "test").unwrap();
+        let saved = reopened.load(&project.id).unwrap();
+        assert!(saved.assets.iter().all(|a| !a.trashed && dir.join(&a.original).is_file()));
+        assert_eq!(fs::read(dir.join(&moves[0].from)).unwrap(), original);
+        assert!(!dir.join("trash-transaction.json").exists());
+    }
+
+    #[test]
+    fn reopen_keeps_moves_when_index_commit_already_succeeded() {
+        let (_tmp, store, mut project) = fixture();
+        let root = store.root.clone();
+        let dir = store.dir(&project.id).unwrap();
+        let moves = moves_for(&project);
+        store.save_trash_transaction(&project.id, &moves).unwrap();
+        for (asset, step) in project.assets.iter_mut().zip(&moves) {
+            fs::rename(dir.join(&step.from), dir.join(&step.to)).unwrap();
+            asset.original = step.to.clone();
+            asset.trashed = true;
+        }
+        store.save(&project).unwrap();
+        drop(store); // Simulate interruption between the commit and journal cleanup.
+        let reopened = Store::open(root, "test").unwrap();
+        let saved = reopened.load(&project.id).unwrap();
+        assert!(saved.assets.iter().all(|a| a.trashed && dir.join(&a.original).is_file()));
+        assert!(!dir.join("trash-transaction.json").exists());
+        let ids = saved.assets.iter().map(|a| a.id.clone()).collect();
+        let restored = reopened.trash(&project.id, ids, true).unwrap();
+        assert!(restored.assets.iter().all(|a| !a.trashed && dir.join(&a.original).is_file()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn blocked_rollback_keeps_journal_and_can_be_retried() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (_tmp, store, project) = fixture();
+        let dir = store.dir(&project.id).unwrap();
+        let moves = moves_for(&project);
+        store.save_trash_transaction(&project.id, &moves).unwrap();
+        fs::rename(dir.join(&moves[0].from), dir.join(&moves[0].to)).unwrap();
+        let lock = fs::OpenOptions::new().read(true).share_mode(1).open(dir.join(&moves[0].to)).unwrap();
+        assert!(store.load(&project.id).unwrap_err().contains("TRASH_RECOVERY_PENDING"));
+        assert!(dir.join("trash-transaction.json").is_file());
+        drop(lock);
+        let saved = store.load(&project.id).unwrap();
+        assert!(saved.assets.iter().all(|a| !a.trashed && dir.join(&a.original).is_file()));
+        assert!(!dir.join("trash-transaction.json").exists());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

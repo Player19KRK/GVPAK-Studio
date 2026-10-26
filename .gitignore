@@ -14,3 +14,21 @@ docs/verification/
 *.pem
 *.key
 __pycache__/
+
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/
+
+backend/team-private/
+*.cer
+
+问题汇总/
+
+# Private certificates, local databases and credential exports
+*.pfx
+*.p12
+*.jks
+*.keystore
+*.sqlite
+*.sqlite3
+*.db

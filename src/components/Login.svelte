@@ -1,0 +1,7 @@
+<script>
+ let username=$state(''),password=$state(''),remember=$state(false),error=$state(''),busy=$state(false);
+ async function login(){if(busy)return;busy=true;error='';try{const r=await fetch('/api/team/login',{method:'POST',headers:{'Content-Type':'application/json','X-Edge-IPC':'1'},body:JSON.stringify({username,password,remember})});if(!r.ok){const e=await r.json();throw Error(e.error==='INVALID_LOGIN'?"用户名或密码不正确。":e.error==='SESSION_SAVE_FAILED'?'无法保存登录状态，请稍后重试或联系管理员。':e.error.replaceAll('_',' '));}location.reload();}catch(e){error=e.message;}finally{busy=false;password='';}}
+</script>
+<main class="team-login"><form onsubmit={e=>{e.preventDefault();login();}}><h1>GVPAK STUDIO</h1><h2>登录</h2><label>用户名<input name="username" autocomplete="username" bind:value={username} disabled={busy} required maxlength="32"/></label><label>密码<input name="password" type="password" autocomplete="current-password" bind:value={password} disabled={busy} required maxlength="128"/></label><label class="remember-device"><input name="remember" type="checkbox" bind:checked={remember} disabled={busy}/>在此设备保持登录（30 天）</label><small>仅在自己的电脑上勾选。此设置仅对当前浏览器生效，退出登录后失效。</small>{#if error}<p role="alert">{error}</p>{/if}<button class="primary" disabled={busy||!username||!password}>{busy?"正在登录…":"登录"}</button><small>每个账号使用独立工作区。请向管理员申请账号。</small></form></main>
+<style>.team-login label.remember-device{display:flex;align-items:center;gap:8px}.remember-device input{width:16px;height:16px;margin:0;accent-color:var(--red)}</style>
+

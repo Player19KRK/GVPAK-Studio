@@ -297,7 +297,7 @@ fn sample_path(root: &Path, id: &str) -> Res<std::path::PathBuf> {
 }
 pub fn preview(store: &Store, pid: &str, ids: Vec<String>, plan: Plan) -> Res<Value> {
     plan.executable()?;
-    if ids.is_empty() || ids.len() > 500 {
+    if ids.is_empty() {
         return Err("INVALID_SCOPE: 请选择 1–500 张图片".into());
     }
     let p = store.load(pid)?;
@@ -425,7 +425,12 @@ pub fn apply(
             } else {
                 vec![]
             };
-            Ok(json!({"assetId":aid,"status":"ok","exports":exported}))
+            let export_cancelled = sample.plan.output.is_some() && exported.is_empty() && cancel.load(Ordering::Relaxed);
+            let failures: Vec<_> = exported.iter().filter(|item| item.status != "ok").map(|item| item.status.clone()).collect();
+            let status = if export_cancelled { "cancelled" } else if failures.is_empty() { "ok" } else { "partial" };
+            let error = if export_cancelled { Some("CANCELLED: export was not processed".to_string()) }
+                else if failures.is_empty() { None } else { Some(failures.join("; ")) };
+            Ok(json!({"assetId":aid,"status":status,"processingStatus":"ok","error":error,"exports":exported}))
         })();
         results.push(match attempt {
             Ok(v) => v,
@@ -435,6 +440,8 @@ pub fn apply(
     }
     sample.status = if cancel.load(Ordering::Relaxed) {
         "cancelled"
+    } else if results.iter().any(|item| item["status"] != "ok") {
+        if results.iter().any(|item| item["status"] == "ok" || item["status"] == "partial") { "partial" } else { "failed" }
     } else {
         "completed"
     }
@@ -493,7 +500,7 @@ Allowed steps (only these exact keys):
 {"op":"sharpen","sigma":1.0,"threshold":3} sigma 0.1..5, threshold 0..100.
 {"op":"denoise","strength":3.0} strength 1..20, local OpenCV; <=16 million pixels, resize first if needed.
 Optional output: {"format":"webp","width":1000,"height":1000,"fit":"pad","maxBytes":500000,"background":[255,255,255]}. Formats webp/png/jpeg. KB = 1000 bytes. No paths. Output directory chosen by user locally. Use output when format/compression/export requested. Dimensions <=16000 each and <=120 million pixels.
-If request needs semantic masking, background removal on opaque photos, object changes, relighting or generation: do not simulate with flatten/blur; set clarification in Chinese explaining supported local options or explicit Google generate mode, with no automatic cloud image calls. Compositing/layers/paste-image operations are NOT available; never offer them as implemented alternatives. You only see instructions and dimensions, never claim to have inspected pixels. Preserve product shape/logo/colors unless explicitly asked to change. At most 20 steps; execute in order. Unknown/ambiguous requests require clarification; no partial unsupported operation disguised as done. Steps apply after existing edits. Reuse these steps for the whole selection. Never emit code, shell commands, URLs or file access operations. All user-facing strings in concise English."#;
+If request needs semantic masking, background removal on opaque photos, object changes, relighting or generation: do not simulate with flatten/blur; set clarification in Chinese explaining supported local options or explicit Google generate mode, with no automatic cloud image calls. Compositing/layers/paste-image operations are NOT available; never offer them as implemented alternatives. You only see instructions and dimensions, never claim to have inspected pixels. Preserve product shape/logo/colors unless explicitly asked to change. At most 20 steps; execute in order. Unknown/ambiguous requests require clarification; no partial unsupported operation disguised as done. Steps apply after existing edits. Reuse these steps for the whole selection. Never emit code, shell commands, URLs or file access operations. All user-facing strings in clear, concise Chinese."#;
 pub async fn plan(instruction: String, context: Value) -> Res<Value> {
     let result = query(PROMPT, instruction, context).await?;
     let parsed: Plan =

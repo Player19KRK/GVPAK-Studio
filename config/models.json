@@ -4,8 +4,20 @@
     {
       "id": "gemini-nano-banana-2.1",
       "name": "Nano Banana 2.1",
-      "resolutions": ["1K", "2K", "4K"],
-      "ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+      "resolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3"
+      ],
       "inputUsdPerMillion": 1.5,
       "textUsdPerMillion": 7.5,
       "imageUsdPerMillion": 30,
@@ -21,8 +33,20 @@
     {
       "id": "gemini-3-pro-image",
       "name": "Nano Banana Pro",
-      "resolutions": ["1K", "2K", "4K"],
-      "ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+      "resolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3"
+      ],
       "inputUsdPerMillion": 2,
       "textUsdPerMillion": 12,
       "imageUsdPerMillion": 120,
@@ -38,8 +62,18 @@
     {
       "id": "gemini-3.1-flash-lite-image",
       "name": "Nano Banana Lite",
-      "resolutions": ["1K"],
-      "ratios": ["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"],
+      "resolutions": [
+        "1K"
+      ],
+      "ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3"
+      ],
       "inputUsdPerMillion": 0.25,
       "textUsdPerMillion": 1.5,
       "imageUsdPerMillion": 30,
@@ -49,6 +83,64 @@
       "source": "https://ai.google.dev/gemini-api/docs/pricing",
       "checkedAt": "2026-10-12",
       "note": "仅 1K；完整宽高比列表仍待核实。"
+    },
+    {
+      "id": "GPT-Image-2.5-Flare",
+      "name": "GPT Image 2.5 Flare · Poe",
+      "resolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3"
+      ],
+      "inputUsdPerMillion": 0,
+      "textUsdPerMillion": 0,
+      "imageUsdPerMillion": 0,
+      "imageUsd": {
+        "1K": null,
+        "2K": null,
+        "4K": null
+      },
+      "source": "https://poe.com/GPT-Image-2.5-Flare",
+      "checkedAt": "2026-10-23",
+      "note": "Poe 按点数计费，以账户账单为准。"
+    },
+    {
+      "id": "GPT-Image-2.5-Sunburst",
+      "name": "GPT Image 2.5 Sunburst · Poe",
+      "resolutions": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "ratios": [
+        "1:1",
+        "4:3",
+        "3:4",
+        "16:9",
+        "9:16",
+        "3:2",
+        "2:3"
+      ],
+      "inputUsdPerMillion": 0,
+      "textUsdPerMillion": 0,
+      "imageUsdPerMillion": 0,
+      "imageUsd": {
+        "1K": null,
+        "2K": null,
+        "4K": null
+      },
+      "source": "https://poe.com/GPT-Image-2.5-Sunburst",
+      "checkedAt": "2026-10-23",
+      "note": "Poe 按点数计费，以账户账单为准。"
     }
   ]
 }

@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+const s=fs.readFileSync(new URL('../src/components/Coverflow.svelte',import.meta.url),'utf8');const code=s.slice(s.indexOf('let pointer=null'),s.indexOf('// Exact GVPAK'));
+function setup(){let next=0,previous=0;const ui=new Function('studio','next','previous',code+';return {dragStart,dragMove,dragEnd};')({busy:''},()=>next++,()=>previous++);const event=x=>({button:0,pointerId:1,clientX:x,target:{closest:()=>false},currentTarget:{setPointerCapture(){}},preventDefault(){}});return {ui,event,get next(){return next},get previous(){return previous}};}
+test('click jitter does not switch, a deliberate drag advances adjacent images',()=>{const x=setup();x.ui.dragStart(x.event(300));x.ui.dragMove(x.event(296));assert.equal(x.next,0);x.ui.dragMove(x.event(165));assert.equal(x.next,2);x.ui.dragEnd();x.ui.dragMove(x.event(0));assert.equal(x.next,2);});
+test('drag direction can reverse without skipping the adjacent step',()=>{const x=setup();x.ui.dragStart(x.event(100));x.ui.dragMove(x.event(170));assert.equal(x.previous,1);x.ui.dragMove(x.event(100));assert.equal(x.next,1);});

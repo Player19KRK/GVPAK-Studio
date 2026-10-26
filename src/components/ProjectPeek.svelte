@@ -26,9 +26,9 @@
 </script>
 <svelte:window onpointermove={pointerMove} onblur={onclose} onpointerout={e=>{if(!e.relatedTarget)onclose();}} onkeydown={e=>{if(e.key==='Escape')onclose();}}/>
 <div bind:this={panel} popover="manual" class="project-peek" role="region" aria-label={`Preview ${project.name}`} style:left={`${layout.left}px`} style:top={`${layout.top}px`} style:width={`${layout.width}px`} style:max-height={`${layout.height}px`} style:--peek-origin={layout.origin} style:--peek-cell={`${(layout.width-36)/3}px`} onpointerleave={pointerMove} onfocusout={e=>{if(!e.currentTarget.contains(e.relatedTarget))onclose();}} use:wheel>
- <header><span>{project.name}</span><button aria-label="Close project preview" onclick={onclose}><X size={14}/></button></header>
+ <header><span>{project.name}</span><button aria-label="关闭项目预览" onclick={onclose}><X size={14}/></button></header>
  <div bind:this={scroller} class="peek-grid" onscroll={()=>{row=Math.floor((scroller.scrollTop+.5)/(scroller.firstElementChild?.getBoundingClientRect().height+6||1));}}>{#each pictures as picture,i (picture.id)}<button aria-label={`Open preview ${picture.name}`} title={picture.name} onclick={()=>onselect(project.id,picture.id)}><img src={thumbs[picture.id]} alt={picture.name} loading={i<9?'eager':'lazy'}/><span>{picture.name}</span></button>{/each}</div>
- {#if !pictures.length}<div class="peek-empty">No images yet</div>{/if}
- <footer><span>{pictures.length?`${Math.min(row*3+1,pictures.length)}–${Math.min((row+3)*3,pictures.length)} / ${pictures.length}`:'0 images'}</span>{#if pictures.length>9}<span>Scroll for more</span>{/if}<ArrowUpRight size={12}/></footer>
+ {#if !pictures.length}<div class="peek-empty">暂无图片</div>{/if}
+ <footer><span>{pictures.length?`${Math.min(row*3+1,pictures.length)}–${Math.min((row+3)*3,pictures.length)} / ${pictures.length}`:'0 张图片'}</span>{#if pictures.length>9}<span>滚动查看其余图片</span>{/if}<ArrowUpRight size={12}/></footer>
 </div>
 

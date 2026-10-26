@@ -8,6 +8,6 @@
  onDestroy(()=>{delete document.body.dataset.resizingPanel;});
 </script>
 <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (Focusable resize separators intentionally support pointer and keyboard input.) -->
-<div class={`panel-resizer ${axis}`} role="separator" tabindex="0" aria-label={label} aria-orientation={axis==='width'?'vertical':'horizontal'} aria-valuemin={min} aria-valuemax={Math.round(max)} aria-valuenow={Math.min(max,Math.max(min,value))} aria-valuetext={`${Math.round(Math.min(max,Math.max(min,value)))} pixels`} title="Drag to resize · Double-click to reset" onpointerdown={start} onpointermove={move} onpointerup={finish} onpointercancel={finish} onlostpointercapture={finish} onkeydown={keys} ondblclick={()=>{reset();onfinish();}}><span></span></div>
+<div class={`panel-resizer ${axis}`} role="separator" tabindex="0" aria-label={label} aria-orientation={axis==='width'?'vertical':'horizontal'} aria-valuemin={min} aria-valuemax={Math.round(max)} aria-valuenow={Math.min(max,Math.max(min,value))} aria-valuetext={`${Math.round(Math.min(max,Math.max(min,value)))} pixels`} title="拖动调整大小，双击恢复默认值" onpointerdown={start} onpointermove={move} onpointerup={finish} onpointercancel={finish} onlostpointercapture={finish} onkeydown={keys} ondblclick={()=>{reset();onfinish();}}><span></span></div>
 
 
