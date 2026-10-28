@@ -3,19 +3,19 @@ import assert from 'node:assert/strict';
 import {flushSync} from 'svelte';
 import {harness} from './studio-test-harness.mjs';
 
-test('generate click submits directly after saving a dirty draft',async t=>{
+test('generate click submits through the unified service without opening a preview',async t=>{
  const h=await harness(t),ui=await h.generate();
  h.state.change({exposure:.75});flushSync();
  await ui.generate();
- const request=h.calls.find(c=>c.command==='generate');
- assert.ok(request);assert.equal(request.args.approved,true);
+ const request=h.calls.find(c=>c.command==='single_generation_submit');
+ assert.ok(request);assert.equal(request.args.input.sourceMode,'reference');assert.equal(h.state.studio.modal,'');
  assert.equal(h.state.studio.error,'');
 });
-test('latest prompt can generate directly without a separate approval state',async t=>{
+test('latest prompt is forwarded to the unified service rather than an old approved flag',async t=>{
  const h=await harness(t),ui=await h.generate();
  ui.setPrompt('Different request');flushSync();await ui.generate();
- const request=h.calls.find(c=>c.command==='generate');
- assert.equal(request.args.prompt,'Different request');assert.equal(request.args.approved,true);
+ const request=h.calls.find(c=>c.command==='single_generation_submit');
+ assert.equal(request.args.input.prompt,'Different request');assert.equal(request.args.input.model,'fixture');assert.equal('approved' in request.args.input,false);
 });
 
 test('new workspaces display CNY by default',async t=>{
@@ -34,7 +34,7 @@ test('refresh reloads a changed image thumbnail but reuses unaffected images',as
 
 test('text generation omits the current reference and leaves dirty edits untouched',async t=>{
  const h=await harness(t),ui=await h.generate();h.state.change({exposure:.75});ui.setSource('text');flushSync();await ui.generate();
- const request=h.calls.find(c=>c.command==='generate');assert.equal(request.args.assetId,'');assert.equal(h.calls.filter(c=>c.command==='edit_commit').length,0);assert.equal(h.state.studio.error,'');
+ const request=h.calls.find(c=>c.command==='single_generation_submit');assert.equal(request.args.input.sourceMode,'text');assert.equal(h.state.studio.draft.exposure,.75);assert.equal(h.calls.filter(c=>c.command==='edit_commit').length,0);assert.equal(h.state.studio.error,'');
 });
 test('pasting plain text is left to the prompt field',async t=>{
  const h=await harness(t),ui=await h.generate();h.state.studio.mode='generate';let prevented=false;

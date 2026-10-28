@@ -19,7 +19,7 @@ if mode == "denoise":
     result = cv2.fastNlMeansDenoisingColored(rgb, None, value, value, 7, 21)
     if alpha is not None:
         result = np.dstack((result, alpha))
-elif mode in ("center", "deskew"):
+elif mode in ("center", "deskew", "cutout"):
     import math
     h, w = image.shape[:2]
     border = np.concatenate((rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]))
@@ -35,8 +35,61 @@ elif mode in ("center", "deskew"):
         raise ValueError("subject not found")
     largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
     x, y, bw, bh, area = stats[largest]
-    if not 0.01 < area / (w * h) < 0.90 or (not transparent and np.mean(np.linalg.norm(border - bg, axis=1) > 28) > 0.15):
+    uncertain = not 0.01 < area / (w * h) < 0.90 or (not transparent and np.mean(np.linalg.norm(border - bg, axis=1) > 28) > 0.15)
+    if uncertain and mode in ("deskew", "cutout") and not transparent:
+        # Multiple background tones (e.g. cardboard + tabletop) are not one color.
+        # Segment the subject against a border-color model before measuring its axis.
+        scale = min(1.0, 1000 / max(w, h))
+        work = cv2.resize(rgb, (max(1, round(w*scale)), max(1, round(h*scale))))
+        lab = cv2.cvtColor(work, cv2.COLOR_BGR2LAB).astype(np.float32)
+        sample = np.concatenate((lab[0], lab[-1], lab[:, 0], lab[:, -1]))[::2].copy()
+        cv2.setRNGSeed(0)
+        _, _, centers = cv2.kmeans(sample, 3, None, (cv2.TERM_CRITERIA_EPS+cv2.TERM_CRITERIA_MAX_ITER, 30, .2), 3, cv2.KMEANS_PP_CENTERS)
+        distance = np.min(np.linalg.norm(lab[:, :, None, :]-centers[None, None, :, :], axis=3), axis=2)
+        foreground = (distance > 22).astype(np.uint8)*255
+        foreground = cv2.morphologyEx(foreground, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
+        foreground = cv2.morphologyEx(foreground, cv2.MORPH_OPEN, np.ones((3,3),np.uint8))
+        n, labelling, regions, _ = cv2.connectedComponentsWithStats(foreground)
+        candidates = [i for i in range(1,n) if .01 < regions[i,cv2.CC_STAT_AREA]/foreground.size < .85 and regions[i,0]>1 and regions[i,1]>1 and regions[i,0]+regions[i,2]<work.shape[1]-1 and regions[i,1]+regions[i,3]<work.shape[0]-1]
+        if not candidates:
+            raise ValueError("subject uncertain; use a clear single-subject image")
+        chosen = max(candidates, key=lambda i:regions[i,cv2.CC_STAT_AREA])
+        seed = (labelling == chosen).astype(np.uint8)
+        grab = np.full(seed.shape, cv2.GC_PR_BGD, np.uint8)
+        grab[seed>0] = cv2.GC_PR_FGD
+        grab[cv2.erode(seed,np.ones((5,5),np.uint8))>0] = cv2.GC_FGD
+        grab[:2] = grab[-2:] = cv2.GC_BGD
+        grab[:,:2] = grab[:,-2:] = cv2.GC_BGD
+        cv2.grabCut(work,grab,None,np.zeros((1,65),np.float64),np.zeros((1,65),np.float64),2,cv2.GC_INIT_WITH_MASK)
+        mask = cv2.resize(np.where((grab==cv2.GC_FGD)|(grab==cv2.GC_PR_FGD),255,0).astype(np.uint8),(w,h),interpolation=cv2.INTER_NEAREST)
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+        largest = 1 + np.argmax(stats[1:,cv2.CC_STAT_AREA])
+        x,y,bw,bh,area = stats[largest]
+        if not .01 < area/(w*h) < .85:
+            raise ValueError("subject uncertain")
+    elif uncertain:
         raise ValueError("subject uncertain on complex background")
+    if mode == "cutout":
+        # Refine the detected foreground into a matte; reject uncertain scenes above.
+        if not transparent:
+            seed = (labels == largest).astype(np.uint8)
+            grab = np.full(seed.shape, cv2.GC_PR_BGD, np.uint8)
+            grab[seed > 0] = cv2.GC_PR_FGD
+            grab[cv2.erode(seed, np.ones((3,3),np.uint8)) > 0] = cv2.GC_FGD
+            grab[:1] = grab[-1:] = cv2.GC_BGD
+            grab[:,:1] = grab[:,-1:] = cv2.GC_BGD
+            cv2.grabCut(rgb, grab, None, np.zeros((1,65),np.float64), np.zeros((1,65),np.float64), 2, cv2.GC_INIT_WITH_MASK)
+            matte = np.where((grab==cv2.GC_FGD)|(grab==cv2.GC_PR_FGD),255,0).astype(np.uint8)
+            if not .005 < np.count_nonzero(matte)/matte.size < .95:
+                raise ValueError("subject uncertain")
+        else:
+            matte = alpha
+        result = np.dstack((rgb, matte))
+        ok, encoded = cv2.imencode(".png", result)
+        if not ok:
+            raise ValueError("encode")
+        encoded.tofile(destination)
+        raise SystemExit(0)
     points = np.column_stack(np.where(labels == largest)[::-1]).astype(np.float32)
     if mode == "center":
         if not 0 <= value <= 0.35:

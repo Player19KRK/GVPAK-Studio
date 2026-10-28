@@ -1,0 +1,3 @@
+# Keep release artifacts byte-identical and hide generated bundles in code review.
+dist/** -text -whitespace linguist-generated=true
+bin/*.exe binary

@@ -1,0 +1,6 @@
+import {invoke} from './http.ts';import {exportOperation,exportPreviewInput} from '../lib/export.ts';import {selection} from '../stores/selection.svelte';import {project} from '../stores/project.svelte';import {studio,liveAssets} from '../studio.svelte';import {sendChat} from '../stores/chat.svelte';import {shell,saveShell} from '../app/shell.svelte';
+export function chooseExportScope(kind){const selected=[...selection.selectedIds];selection.mention([]);if(kind==='current')selection.set(studio.aid?[studio.aid]:[]);else if(kind==='project')selection.set(liveAssets().map(asset=>asset.id));else if(kind==='selection')selection.set(selected);}
+export const chooseExportDirectory=()=>project.authorizeDirectory({chooseNew:true});
+export function previewExport(input){return invoke('selection_export_preview',input);}
+export function submitExport(value,{limit=true,context=selection.snapshot()}={}){if(!context.resolvedTarget.ids.length)throw Error('请先选择需要导出的图片。');studio.workflowChat='export';shell.chatCollapsed=false;saveShell();return sendChat('导出 '+context.resolvedTarget.ids.length+' 张图片',{projectId:project.currentId,context,operations:[exportOperation(value,limit)],followResults:false});}
+export {exportPreviewInput};

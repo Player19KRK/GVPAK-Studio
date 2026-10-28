@@ -1,0 +1,61 @@
+/* Complete application chrome. Frozen coverflow rules and inherited legacy tokens stay untouched. */
+.complete-app > .app-workspace > main { background: var(--bg); }
+.complete-app :is(.app-header,.app-footer,.toolrail,.project-warning-notice,.inspector,.workflow-panel,.library,.generation-scroll,.canvas-top,.canvas-bottom) {
+  color: var(--text); color-scheme: light dark;
+  --paper: var(--bg-elev); --line: var(--border); --muted: var(--text-dim); --red: var(--accent);
+}
+.complete-app :is(.app-header,.app-footer,.toolrail,.project-warning-notice,.inspector,.generation-form,.export-form,.task,.project-card) { background: var(--bg-elev); border-color: var(--border); }
+.complete-app :is(.workflow-panel,.library,.generation-scroll,.generation-scroll .legacy-editor) { background: var(--bg); color: var(--text); color-scheme: light dark; }
+.complete-app :is(.canvas-top,.canvas-bottom,.generation-reference,.export-preview,.grid-zoom) { background: var(--bg-sunken); color: var(--text); }
+.complete-app :is(.app-footer,.brand-studio,.hint,.field-grid label,.workflow-heading>span,.scope-picker>span,.inspector-title button,.inspector-tabs button,.inspector-bottom button,.version small,.project-card span,.task>p,.canvas-file small,.asset-details,.histogram-scale) { color: var(--text-dim); }
+.complete-app :is(.mode-tabs button,.toolrail>button,.rail-bottom button) { color: var(--text-dim); }
+.complete-app :is(.mode-tabs button.active,.inspector-tabs button.active) { color: var(--text); }
+.complete-app :is(.mode-tabs button.active,.inspector-tabs button.active)::after { background: var(--accent); }
+.complete-app :is(.toolrail .chosen,.ai-button.active,.assistant-presets button.active) { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.complete-app .segmented { color: var(--text); background: var(--bg-elev); }
+.complete-app .segmented button { color: var(--text-dim); }
+.complete-app .segmented button.active { background: var(--text); color: var(--bg-elev); }
+.complete-app :is(.empty,.empty h2,.workflow-heading h1,.workflow-panel h2) { color: var(--text); }
+.complete-app :is(h3,.generation-form label,.export-form label,.opacity-label):not(:where(.cf-root,.cf-root *)) { color: var(--text-dim); }
+.complete-app :is(input:not([type=range]):not([type=checkbox]),select,textarea):not(:where(.cf-root,.cf-root *)) {
+  color: var(--text); background: var(--bg-elev); border-color: var(--border); color-scheme: light dark; caret-color: var(--accent);
+}
+.complete-app :is(input,textarea):not(:where(.cf-root,.cf-root *))::placeholder { color: var(--text-dim); opacity: 1; }
+.complete-app :is(input[type=range],input[type=checkbox]):not(:where(.cf-root,.cf-root *)) { accent-color: var(--accent); }
+.complete-app :is(button,a,summary,[tabindex],input,select,textarea):not(:where(.cf-root,.cf-root *)):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.complete-app :is(button,a,summary):not(:where(.cf-root,.cf-root *)) { transition-duration: var(--motion-fast); }
+.complete-app button:not(:where(.cf-root *, :disabled,.primary,.ui-button-primary)):hover { background: var(--bg-sunken); }
+.complete-app button:not(:where(.cf-root *,:disabled)):active { background: var(--accent-soft); }
+.complete-app .primary { background: var(--accent); color: var(--on-accent); }
+.complete-app .primary:hover:not(:disabled) { background: color-mix(in srgb,var(--accent) 88%,var(--text)); color: var(--on-accent); }
+.complete-app .primary:active:not(:disabled) { background: var(--accent); }
+.complete-app :is(.line-button,.assistant-presets button,.looks button,.version,.layer,.asset-details,.scope-picker,.cost-line) { border-color: var(--border); }
+.complete-app .text-button { color: var(--accent); }
+.complete-app .editor-canvas { --stage: var(--bg-sunken); }
+.complete-app :is(.inline-error,.field-error,.task-item small) { color: var(--danger); }
+.complete-app :is(.busy-pill,.error-bar,.drop-overlay) { background: var(--bg-elev); color: var(--text); border-color: var(--border); }
+.complete-app .project-peek { background: var(--bg-elev); color: var(--text); }
+.complete-app .project-peek footer { color: var(--text-dim); }
+.complete-app :not(:where(.cf-root,.cf-root *))::selection { background: var(--accent); color: var(--on-accent); }
+@media(prefers-reduced-motion:reduce) {
+  .complete-app :not(:where(.cf-root,.cf-root *)) { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+/* Floating support/account surfaces sit beside the application root. */
+.feedback-fab,.team-account,.team-downloads { background:var(--bg-elev);color:var(--text);border-color:var(--border);color-scheme:light dark; }
+.feedback-fab { color:var(--accent); }
+.team-downloads { --line:var(--border);--muted:var(--text-dim);--red:var(--accent); }
+.feedback-board :is(button,textarea):focus-visible,.feedback-fab:focus-visible,.team-downloads :is(a,button):focus-visible { outline:2px solid var(--focus);outline-offset:2px; }
+.complete-app :is(.adjustment label,.adjustment label svg,.looks span,.canvas-file span,.canvas-bottom button,.canvas-top-actions button,.export-preview>span,.generation-reference>span) { color:var(--text-dim); }
+.complete-app .canvas-bottom button.active { color:var(--accent); }
+.complete-app :is(.generation-scroll,.workflow-panel,.library,.inspector-scroll,.complete-chat) { scrollbar-color:var(--border) var(--bg-sunken); }
+.team-login { --paper:var(--bg-elev);--line:var(--border);--muted:var(--text-dim);--red:var(--accent);background:var(--bg);color:var(--text);color-scheme:light dark; }
+.team-login input:not([type=range]):not([type=checkbox]):not([type=color]),.team-login button { color:var(--text);background:var(--bg-elev);border-color:var(--border); }
+.team-login .primary { background:var(--accent);color:var(--on-accent); }
+:is(.team-login,.team-account,.team-downloads,.feedback-board) :is(button,a):hover:not(:disabled) { background:var(--bg-sunken); }
+:is(.team-login,.team-account,.team-downloads,.feedback-board) :is(button,a):active:not(:disabled) { background:var(--accent-soft); }
+.team-login .primary:hover:not(:disabled) { background:color-mix(in srgb,var(--accent) 88%,var(--text));color:var(--on-accent); }
+:is(.team-login,.team-account) :is(button,input):focus-visible { outline:2px solid var(--focus);outline-offset:2px; }
+.complete-app .project-peek:popover-open { animation-duration:var(--motion-fast); }
+@media(prefers-reduced-motion:reduce) {
+  :is(.team-login,.team-account,.team-downloads,.feedback-board) * { animation:none!important;transition:none!important; }
+}

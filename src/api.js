@@ -1,11 +1,14 @@
+import {getApi} from './services/api.ts';
+import {invoke} from './services/http.ts';
 import {readLocalSetting} from './branding-migration.js';
 import {chooseDirectory} from './local-downloads.js';
 export const teamUser=typeof window==='undefined'?null:window.__gvpakTeamUser||null;
 export const isTeam=!!teamUser;
-export async function api(name,args={}){if(isTeam){if(name==='pick_output')return chooseDirectory();if(name==='pick_import')return pickUpload(args.projectId,args.folder);if(name==='hybrid_open_output'){window.dispatchEvent(new Event('team-downloads'));return null;}}
-const res=await fetch(`/api/invoke/${name}`,{method:'POST',headers:{'Content-Type':'application/json','X-GVPAK-IPC':'1'},body:JSON.stringify(args)});if(res.status===401&&isTeam){location.reload();throw Error('Session expired');}if(!res.ok){const e=await res.json().catch(()=>({error:res.statusText}));throw Error(errorText(e.error||'请求失败'));}return res.headers.get('content-type')?.includes('octet-stream')?res.blob():res.json();}
+export const isMock=import.meta.env?.VITE_FRONTEND_DATA_MODE==='mock';
+export async function api(name,args={}){if(isTeam||isMock){if(name==='pick_output'&&!isMock)return chooseDirectory();if(name==='pick_import')return pickUpload(args.projectId,args.folder);if(name==='hybrid_open_output'){window.dispatchEvent(new Event('team-downloads'));return null;}}
+try{return await invoke(name,args);}catch(e){if(e.status===401&&isTeam){location.reload();throw Error('Session expired');}throw Error(errorText(e.message));}}
 export async function imageUrl(name,args){return URL.createObjectURL(await api(name,args));}
-export async function upload(projectId,files){let total=null,items=[],size=0;
+export async function upload(projectId,files){if(isMock)return getApi().importFiles(projectId,files);let total=null,items=[],size=0;
  async function send(){if(!items.length)return;const r=await fetch('/api/upload',{method:'POST',headers:{'Content-Type':'application/json','X-GVPAK-IPC':'1'},body:JSON.stringify({projectId,files:items})});const result=await r.json();if(!r.ok)throw Error(`已导入 ${total?.imported||0} 张。${result.error||'上传失败，请重试剩余图片。'}`);total={...result,imported:(total?.imported||0)+result.imported,skipped:[...(total?.skipped||[]),...result.skipped],errors:[...(total?.errors||[]),...result.errors]};items=[];size=0;}
  for(const file of files){if(file.size>30*1024*1024)throw Error(`${file.name} 超过单张 30 MB。请缩小此文件后再上传。`);if(size+file.size>42*1024*1024||items.length>=50)await send();const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(file);});items.push({name:file.name,data});size+=file.size;}await send();return total;}
 export const initialEdit={adjustmentOpacity:1,adjustmentEnabled:true,exposure:0,contrast:1,saturation:1,temperature:0,rotation:0,flipH:false,flipV:false,crop:null,strokes:[]};

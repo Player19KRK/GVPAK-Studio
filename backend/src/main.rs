@@ -21,6 +21,17 @@ mod transport;
 mod team;
 mod retention;
 mod image_provider;
+mod new_product;
+mod frontend_api;
+mod frontend_ops;
+mod frontend_chat;
+mod frontend_assets;
+mod editor_pixels;
+mod frontend_settings;
+mod frontend_output;
+mod frontend_export;
+mod frontend_pipeline;
+mod frontend_activity;
 use axum::response::IntoResponse;
 struct AppState {
     store: Mutex<Store>,
@@ -610,7 +621,7 @@ fn settings_path() -> Res<PathBuf> {
 
 fn data_root_switch(s: State<Shared>, path: String) -> Res<Value> {
     let mut store = locked(&s)?;
-    if hybrid::active(&store.root) {
+    if hybrid::active(&store.root) || frontend_activity::active(&store.root)? {
         return Err("ACTIVE_JOBS: 请等待或取消后台任务后再切换数据目录".into());
     }
     let new = Store::open(PathBuf::from(&path), &store.profile)?;
@@ -695,7 +706,8 @@ async fn main() {
 
 fn arg<T:serde::de::DeserializeOwned>(v:&Value,key:&str)->Res<T>{serde_json::from_value(v.get(key).cloned().unwrap_or(Value::Null)).map_err(|e|format!("INVALID_ARGUMENT {key}: {e}"))}
 fn binary(bytes:Vec<u8>)->axum::response::Response{([(axum::http::header::CONTENT_TYPE,"application/octet-stream")],bytes).into_response()}
-pub(crate) async fn dispatch(s:Shared,hub:AppHandle,name:String,v:Value)->Res<axum::response::Response>{match name.as_str(){
+pub(crate) async fn dispatch(s:Shared,hub:AppHandle,name:String,v:Value)->Res<axum::response::Response>{if matches!(name.as_str(),"session_status"|"task_list"|"task_stop"|"operation_execute"|"operation_result"|"selection_export_preview"|"assistant_context_plan"|"chat_execute"|"assets_metadata"|"settings_read"|"settings_patch"|"execution_preferences"){return frontend_api::dispatch(s,hub,&name,v).await}if name.starts_with("new_product_"){return new_product::invoke(s,hub,&name,v).await}match name.as_str(){
+"certificate_status"|"certificate_regenerate"|"certificate_installer"=>Ok(axum::Json(team::certificate(&name).await?).into_response()),
 "poe_key_status"=>Ok(axum::Json(image_provider::credential()?.get_password().is_ok()).into_response()),
 "poe_key_set"=>{let key:String=arg(&v,"key")?;if key.trim().is_empty(){return Err("KEY_REQUIRED".into())}image_provider::credential()?.set_password(key.trim()).map_err(|e|e.to_string())?;Ok(axum::Json(true).into_response())},
 "poe_key_delete"=>{let _=image_provider::credential()?.delete_credential();Ok(axum::Json(true).into_response())},

@@ -1,3 +1,4 @@
 import fs from 'node:fs';import {compile,compileModule} from 'svelte/compiler';
-for(const file of ['src/App.svelte',...fs.readdirSync('src/components').filter(x=>x.endsWith('.svelte')).map(x=>'src/components/'+x)]){try{const result=compile(fs.readFileSync(file,'utf8'),{filename:file});console.log(file,'OK',result.warnings.map(x=>x.code).join(','));}catch(e){console.log(file,e.message,e.frame);process.exitCode=1;}}
-try{compileModule(fs.readFileSync('src/studio.svelte.js','utf8'),{filename:'src/studio.svelte.js'});console.log('state module OK')}catch(e){console.log(e.message);process.exitCode=1;}
+const files=directory=>fs.readdirSync(directory,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(`${directory}/${entry.name}`):[`${directory}/${entry.name}`]);
+for(const file of files('src').filter(x=>x.endsWith('.svelte'))){try{const result=compile(fs.readFileSync(file,'utf8'),{filename:file});console.log(file,'OK',result.warnings.map(x=>x.code).join(','));}catch(e){console.log(file,e.message,e.frame);process.exitCode=1;}}
+for(const file of files('src').filter(x=>x.endsWith('.svelte.js'))){try{compileModule(fs.readFileSync(file,'utf8'),{filename:file});console.log(file,'OK')}catch(e){console.log(e.message);process.exitCode=1;}}

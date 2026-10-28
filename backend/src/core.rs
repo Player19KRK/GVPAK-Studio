@@ -126,6 +126,9 @@ pub struct Asset {
     pub exported: bool,
     #[serde(default)]
     pub generated_base: Option<String>,
+    #[serde(default)]pub folder_id: Option<String>,
+    #[serde(default)]pub relative_path: Option<String>,
+    #[serde(default)]pub tags: Vec<String>,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -363,6 +366,12 @@ impl Store {
         self.save(&p)?;
         Ok(p)
     }
+    pub(crate) fn metadata(&self,pid:&str,entries:Vec<crate::frontend_assets::Entry>)->Res<Project>{
+        if entries.is_empty()||entries.len()>5000{return Err("INVALID_METADATA_COUNT".into())}let mut p=self.load(pid)?;let mut seen=std::collections::HashSet::new();
+        for entry in &entries{if !seen.insert(&entry.asset_id)||!p.assets.iter().any(|a|a.id==entry.asset_id&&!a.trashed){return Err("ASSET_NOT_FOUND".into())}entry.validate()?;}
+        for entry in entries{let a=p.assets.iter_mut().find(|a|a.id==entry.asset_id).unwrap();if let Some(folder)=entry.folder{a.folder_id=if folder.is_empty(){None}else{Some(folder.clone())};a.relative_path=Some(if folder.is_empty(){a.name.clone()}else{format!("{folder}/{}",a.name)});}if let Some(tags)=entry.tags{a.tags=tags;}}
+        p.updated_at=now();self.save(&p)?;Ok(p)
+    }
     pub fn rename(&self, pid: &str, name: String) -> Res<Project> {
         if name.trim().is_empty() || name.chars().count() > 120 {
             return Err(err("INVALID_NAME", "项目名称需为 1–120 个字符"));
@@ -449,7 +458,7 @@ impl Store {
                     edit: Edit::default(),
                     versions: vec![],
                     exported: false,
-                    generated_base: None,
+                    generated_base: None,folder_id:None,relative_path:None,tags:vec![],
                 });
                 p.updated_at = now();
                 self.save(&p)?;
@@ -546,6 +555,17 @@ impl Store {
         metadata: serde_json::Value,
     ) -> Res<(Project, String)> {
         self.save_pixels(pid, aid, image, metadata, "generated")
+    }
+    /// Create a real text-generated asset only after pixels have arrived.
+    /// The caller reserves the UUID in its durable job; no placeholder is imported.
+    pub(crate) fn create_generated_asset(&self,pid:&str,aid:&str,image:&DynamicImage,metadata:serde_json::Value)->Res<Project>{
+        valid_id(aid)?;let mut p=self.load(pid)?;
+        if let Some(asset)=p.assets.iter().find(|a|a.id==aid){if asset.versions.iter().any(|v|v.generation.as_ref().is_some_and(|g|g["operationTask"]==metadata["operationTask"])){return Ok(p)}return Err("GENERATED_ASSET_CONFLICT".into())}
+        let bytes=png(image)?;let sha=format!("{:x}",Sha256::digest(&bytes));let original=format!("originals/{aid}.png");let version=format!("versions/{aid}.png");let dir=self.dir(pid)?;
+        for relative in [&original,&version]{let path=dir.join(relative);if path.exists(){if fs::read(&path).map_err(|_|"GENERATED_ASSET_UNAVAILABLE")?!=bytes{return Err("GENERATED_ASSET_CONFLICT".into())}}else{crate::frontend_settings::atomic_bytes(path.parent().unwrap(),path.file_name().unwrap().to_str().unwrap(),&bytes)?;}}
+        let mut permissions=fs::metadata(dir.join(&original)).map_err(|e|e.to_string())?.permissions();permissions.set_readonly(true);fs::set_permissions(dir.join(&original),permissions).map_err(|e|e.to_string())?;
+        image.thumbnail(360,260).save(dir.join(format!("thumbs/{aid}.png"))).map_err(|e|e.to_string())?;
+        p.assets.push(Asset{id:aid.into(),name:format!("生成-{}.png",&aid[..8]),source_path:String::new(),original,sha256:sha,width:image.width(),height:image.height(),bytes:bytes.len() as u64,trashed:false,edit:Edit::default(),versions:vec![Version{id:aid.into(),file:version,kind:"generated".into(),created_at:now(),edit:Edit::default(),generation:Some(metadata),base_version:None}],exported:false,generated_base:Some(aid.into()),folder_id:None,relative_path:None,tags:vec![]});p.updated_at=now();self.save(&p)?;Ok(p)
     }
     pub fn save_processed(
         &self,
@@ -661,6 +681,21 @@ impl Store {
         p.updated_at = now();
         self.save(&p)?;
         Ok(p)
+    }
+    /// Restore a batch's recorded state without deleting versions or touching original bytes.
+    pub(crate) fn restore_asset_state(&self,pid:&str,aid:&str,base:Option<String>,edit:Edit)->Res<Project>{
+        edit.validate()?;let mut p=self.load(pid)?;let a=p.assets.iter_mut().find(|a|a.id==aid&&!a.trashed).ok_or("ASSET_NOT_FOUND")?;
+        if let Some(ref id)=base{if !a.versions.iter().any(|v|&v.id==id&&matches!(v.kind.as_str(),"local"|"generated")){return Err("VERSION_NOT_FOUND".into())}}
+        a.generated_base=base;a.edit=edit.clone();let image=self.source(&p,aid)?;let a=p.assets.iter_mut().find(|a|a.id==aid).unwrap();a.width=image.width();a.height=image.height();a.exported=false;
+        render(image,&edit,Some(360))?.save(self.dir(pid)?.join(format!("thumbs/{aid}.png"))).map_err(|e|e.to_string())?;p.updated_at=now();self.save(&p)?;Ok(p)
+    }
+    /// Restore a whole non-trash batch with one atomic project commit.
+    /// Stage derived thumbnails first; original and version files are never modified.
+    pub(crate) fn restore_asset_states(&self,pid:&str,states:Vec<(String,Option<String>,Edit)>)->Res<Project>{
+        let mut p=self.load(pid)?;let dir=self.dir(pid)?;let staged=tempfile::tempdir_in(&dir).map_err(|e|e.to_string())?;let mut seen=std::collections::HashSet::new();
+        for(aid,base,edit)in &states{valid_id(aid)?;edit.validate()?;if !seen.insert(aid){return Err("DUPLICATE_ASSET".into())}let a=p.assets.iter_mut().find(|a|a.id==*aid&&!a.trashed).ok_or("ASSET_NOT_FOUND")?;if let Some(base)=base{if !a.versions.iter().any(|v|v.id==*base&&matches!(v.kind.as_str(),"local"|"generated")){return Err("VERSION_NOT_FOUND".into())}}a.generated_base=base.clone();a.edit=edit.clone();let image=self.source(&p,aid)?;let a=p.assets.iter_mut().find(|a|a.id==*aid).unwrap();a.width=image.width();a.height=image.height();a.exported=false;fs::write(staged.path().join(format!("{aid}.new")),png(&render(image,edit,Some(360))?)?).map_err(|e|e.to_string())?;let thumbnail=dir.join(format!("thumbs/{aid}.png"));if thumbnail.is_file(){fs::copy(thumbnail,staged.path().join(format!("{aid}.old"))).map_err(|e|e.to_string())?;}}
+        let thumbnails=dir.join("thumbs");let mut installed=Vec::new();let commit=(||->Res<()>{for(aid,_,_)in &states{let bytes=fs::read(staged.path().join(format!("{aid}.new"))).map_err(|e|e.to_string())?;crate::frontend_settings::atomic_bytes(&thumbnails,&format!("{aid}.png"),&bytes)?;installed.push(aid.clone());}p.updated_at=now();crate::frontend_settings::atomic_bytes(&dir,"project.json",&serde_json::to_vec_pretty(&p).map_err(|e|e.to_string())?)})();
+        if let Err(error)=commit{for aid in installed{if let Ok(bytes)=fs::read(staged.path().join(format!("{aid}.old"))){let _=crate::frontend_settings::atomic_bytes(&thumbnails,&format!("{aid}.png"),&bytes);}}return Err(error)}Ok(p)
     }
     pub fn preview_source(&self, pid: &str, aid: &str) -> Res<Vec<u8>> {
         let p = self.load(pid)?;

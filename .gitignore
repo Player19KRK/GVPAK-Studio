@@ -35,3 +35,13 @@ backend/team-private/
 
 # Machine-local application settings (may contain private paths)
 bin/*settings-*.json
+
+# Local verification output and private review copies
+output/
+给Claude审阅的代码/
+Claude核心代码TXT/
+*.crt
+*.pdb
+
+# Disposable CI builds
+.ci-build/

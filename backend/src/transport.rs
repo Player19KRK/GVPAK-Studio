@@ -14,7 +14,19 @@ pub struct AppHandle{pub(crate) events:broadcast::Sender<Value>}
 impl AppHandle {pub fn emit<T:Serialize>(&self,name:&str,payload:T)->Res<()>{let _=self.events.send(json!({"event":name,"payload":payload}));Ok(())}}
 pub mod runtime{
  pub use tokio::task::spawn_blocking;
- pub fn block_on<F:std::future::Future>(f:F)->F::Output{static RT:super::OnceLock<tokio::runtime::Runtime>=super::OnceLock::new();RT.get_or_init(||tokio::runtime::Runtime::new().unwrap()).block_on(f)}
+ fn shared()->&'static tokio::runtime::Runtime{static RT:super::OnceLock<tokio::runtime::Runtime>=super::OnceLock::new();RT.get_or_init(||tokio::runtime::Runtime::new().unwrap())}
+ pub fn block_on<F:std::future::Future>(f:F)->F::Output{shared().block_on(f)}
+ pub fn spawn_background<F:std::future::Future<Output=()>+Send+'static>(f:F){shared().spawn(f);}
+}
+// Explicit document routes leave unknown API/static URLs on ServeDir's normal 404 path.
+pub(crate) fn static_pages(dist:PathBuf)->Router{
+ let entry=tower_http::services::ServeFile::new(dist.join("index.html"));
+ Router::new()
+  .route_service("/library",axum::routing::get_service(entry.clone()))
+  .route_service("/editor/{asset_id}",axum::routing::get_service(entry.clone()))
+  .route_service("/generate",axum::routing::get_service(entry.clone()))
+  .route_service("/settings",axum::routing::get_service(entry))
+  .fallback_service(tower_http::services::ServeDir::new(dist))
 }
 #[derive(Clone)]struct Server{shared:Shared,hub:AppHandle}
 fn allowed(h:&HeaderMap)->bool{
@@ -44,9 +56,46 @@ async fn events(AxumState(s):AxumState<Server>)->impl IntoResponse{
  Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 pub async fn serve(shared:Shared,root:PathBuf){
- let (sender,_)=broadcast::channel(128);let hub=AppHandle{events:sender};crate::hybrid::spawn(hub.clone(),shared.clone());
+ let (sender,_)=broadcast::channel(128);let hub=AppHandle{events:sender};crate::hybrid::spawn(hub.clone(),shared.clone());crate::new_product::resume(shared.clone(),hub.clone());crate::frontend_ops::resume(shared.clone(),hub.clone());
  crate::team::launch(root.clone(), shared.clone());
- let server=Server{shared,hub};let router=Router::new().route("/api/team/session",get(||async{Json(json!({"team":false}))})).route("/api/health",get(||async{Json(json!({"service":"gvpak-studio","version":"2.0.0","status":"ok"}))})).route("/api/invoke/{name}",post(invoke)).route("/api/upload",post(upload)).route("/api/events",get(events)).layer(DefaultBodyLimit::max(128*1024*1024)).with_state(server).fallback_service(tower_http::services::ServeDir::new(root.join("dist")));
+ let server=Server{shared,hub};let router=Router::new().route("/api/team/session",get(||async{Json(json!({"team":false}))})).route("/api/health",get(||async{Json(json!({"service":"gvpak-studio","version":"2.0.0","status":"ok"}))})).route("/api/invoke/{name}",post(invoke)).route("/api/upload",post(upload)).route("/api/events",get(events)).layer(DefaultBodyLimit::max(128*1024*1024)).with_state(server).merge(static_pages(root.join("dist")));
  let port=std::env::var("GVPAK_PORT").unwrap_or("8787".into());let listener=tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await.expect("GVPAK Studio port is available");println!("GVPAK Studio: http://127.0.0.1:{port}");axum::serve(listener,router).await.unwrap();
+}
+
+#[cfg(test)]mod page_route_tests{
+ use super::*;
+ #[tokio::test]
+ async fn document_routes_preserve_api_methods_and_static_errors(){
+  let temp=tempfile::tempdir().unwrap();
+  let html="<!doctype html><title>routing fixture</title>";
+  std::fs::write(temp.path().join("index.html"),html).unwrap();
+  std::fs::create_dir(temp.path().join("assets")).unwrap();
+  std::fs::write(temp.path().join("assets/app.js"),"export const value=42;").unwrap();
+  let app=Router::new().route("/api/guarded",get(||async{(StatusCode::FORBIDDEN,"blocked")})).merge(static_pages(temp.path().into()));
+  let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let base=format!("http://{}",listener.local_addr().unwrap());
+  let server=tokio::spawn(async move{axum::serve(listener,app).await.unwrap()});
+  let client=reqwest::Client::new();
+  for path in ["/","/library","/library?folder=folder-a&tag=box","/editor/image-a","/editor/image%20b","/settings","/generate"]{
+   let response=client.get(format!("{base}{path}")).send().await.unwrap();
+   assert_eq!(response.status(),StatusCode::OK,"{path}");
+   assert!(response.headers()["content-type"].to_str().unwrap().starts_with("text/html"));
+   assert_eq!(response.text().await.unwrap(),html);
+  }
+  let static_file=client.get(format!("{base}/assets/app.js")).send().await.unwrap();
+  assert_eq!(static_file.status(),StatusCode::OK);assert_eq!(static_file.text().await.unwrap(),"export const value=42;");
+  for path in ["/api/missing","/assets/missing.js","/editor","/editor/a/extra","/unknown"]{
+   let response=client.get(format!("{base}{path}")).send().await.unwrap();
+   assert_eq!(response.status(),StatusCode::NOT_FOUND,"{path}");assert_ne!(response.text().await.unwrap(),html);
+  }
+  let guarded=client.get(format!("{base}/api/guarded")).send().await.unwrap();
+  assert_eq!(guarded.status(),StatusCode::FORBIDDEN);assert_eq!(guarded.text().await.unwrap(),"blocked");
+  for path in ["/library","/editor/image-a","/settings"]{
+   assert_eq!(client.post(format!("{base}{path}")).send().await.unwrap().status(),StatusCode::METHOD_NOT_ALLOWED);
+  }
+  let head=client.head(format!("{base}/library")).send().await.unwrap();
+  assert_eq!(head.status(),StatusCode::OK);assert!(head.bytes().await.unwrap().is_empty());
+  server.abort();
+ }
 }
 

@@ -1,4 +1,5 @@
 <script>
+ import {currentEditorBusy} from '../services/editor.js';
  import {onDestroy} from 'svelte';
  import {studio,asset,change,notify} from '../studio.svelte';
  import {clone,hex,rgb} from '../api';
@@ -6,7 +7,7 @@
  import {previewCache,requestPreview} from '../preview-loader';
  import {renderPaint,applyStroke,sourcePoint,strokeRadius} from '../paint.js';
  let canvas=$state(),cursor=$state(null),cursorSize=$state(0);
- let active=$derived(!!studio.paintTool&&!studio.spacePan&&!studio.paintMenuOpen&&!studio.compare&&!studio.busy&&studio.tool!=='crop');
+ let active=$derived(!!studio.paintTool&&!studio.spacePan&&!studio.paintMenuOpen&&!studio.compare&&!currentEditorBusy()&&studio.tool!=='crop');
  let edit=$derived(normalizeEdit(studio.tool==='crop'?{...studio.draft,crop:null,rotation:0,flipH:false,flipV:false}:studio.draft));
  let currentStroke=null,completed=null,geometry=null,source=null,frame=0,published=null;
  function draw(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!canvas||!completed||!source)return;const pixels=currentStroke?applyStroke(completed.slice(),geometry.width,geometry.height,currentStroke,edit,source.width,source.height):completed;canvas.getContext('2d').putImageData(new ImageData(pixels,geometry.width,geometry.height),0,0);});}
@@ -36,8 +37,8 @@
    if(!studio.picking||studio.aid!==a.id||JSON.stringify(normalizeEdit(studio.draft))!==signature)return;
    const work=document.createElement('canvas');work.width=1;work.height=1;const ctx=work.getContext('2d',{willReadFrequently:true});
    ctx.drawImage(entry.bitmap,Math.min(entry.width-1,Math.floor(p[0]*entry.width)),Math.min(entry.height-1,Math.floor(p[1]*entry.height)),1,1,0,0,1,1);
-   const pixel=ctx.getImageData(0,0,1,1).data;if(!pixel[3]){notify("此位置透明，请选择有颜色的位置");return;}
-   studio.brush.color=hex([...pixel].slice(0,3));studio.picking=false;studio.paintTool='brush';notify(`Color ${studio.brush.color}`);
+   const pixel=ctx.getImageData(0,0,1,1).data;if(!pixel[3]){studio.error="此位置透明，请选择有颜色的位置";return;}
+   studio.brush.color=hex([...pixel].slice(0,3));studio.picking=false;studio.paintTool='brush';
   }catch(error){studio.error=error.message;}
  }
  function down(e){if(e.button!==0||!active)return;e.stopPropagation();e.preventDefault();if(studio.picking){sample(e);return;}

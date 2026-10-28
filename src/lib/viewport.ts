@@ -1,0 +1,2 @@
+export type Viewport={zoom:number;pan:{x:number;y:number}};
+export function zoomAt(state:Viewport,point:{x:number;y:number},delta:number):Viewport{if(!Number.isFinite(delta))return {zoom:state.zoom,pan:{...state.pan}};const zoom=Math.max(.2,Math.min(5,state.zoom*Math.exp(-delta*.0015))),factor=zoom/state.zoom;return {zoom,pan:{x:point.x-(point.x-state.pan.x)*factor,y:point.y-(point.y-state.pan.y)*factor}};}

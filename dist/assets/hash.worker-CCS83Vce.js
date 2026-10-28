@@ -1,0 +1,1 @@
+(function(){"use strict";globalThis.onmessage=async({data:s})=>{try{const t=await crypto.subtle.digest("SHA-256",await s.blob.arrayBuffer()),i=[...new Uint8Array(t)].map(a=>a.toString(16).padStart(2,"0")).join("");globalThis.postMessage({id:s.id,result:i})}catch{globalThis.postMessage({id:s.id,error:"文件摘要计算失败，请重试。"})}}})();

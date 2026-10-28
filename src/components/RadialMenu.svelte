@@ -1,4 +1,5 @@
 <script>
+ import {keyboard} from '../lib/shortcuts.ts';
  import {onMount,tick} from 'svelte';
  import {fade} from 'svelte/transition';
  import {Palette,Brush,Eraser,Pipette,ArrowLeft,X} from 'lucide-svelte';
@@ -22,7 +23,7 @@
 </script>
 <svelte:window onresize={place}/>
 {#if placement}<div class="paint-menu-shade" role="presentation" onpointerdown={e=>{if(e.target===e.currentTarget){e.preventDefault();e.stopPropagation();onclose();}}} oncontextmenu={e=>{e.preventDefault();onclose();}}>
- <div bind:this={host} class="paint-wheel" class:parameter-mode={page==='brush'||page==='eraser'} style:left={`${placement.left}px`} style:top={`${placement.top}px`} style:width={`${placement.width}px`} style:height={`${placement.height}px`} role="dialog" aria-modal="true" aria-label="绘画工具" tabindex="-1" onkeydown={keys}>
+ <div bind:this={host} class="paint-wheel" class:parameter-mode={page==='brush'||page==='eraser'} style:left={`${placement.left}px`} style:top={`${placement.top}px`} style:width={`${placement.width}px`} style:height={`${placement.height}px`} role="dialog" aria-modal="true" aria-label="绘画工具" tabindex="-1" use:keyboard={{keydown: keys}}>
   {#if page==='root'||page==='color'}<div class="wheel-glass"></div>{/if}
   <svg viewBox={placement.viewBox} class="wheel-svg" role="group" aria-label={page==='root'?"绘画工具":page==='color'?"颜色选择":`${page} settings`}>
 
@@ -30,7 +31,8 @@
     {#if page==='root'}
      {#each items as item,i}
       {@const start=-150+i*120}{@const location=polar(70,start+60)}
-      <g class="wheel-sector" role="button" tabindex="0" aria-label={item.name} onclick={()=>enter(item.id)} onkeydown={e=>activate(e,()=>enter(item.id))}>
+<!-- svelte-ignore a11y_click_events_have_key_events (Keyboard activation uses the central keyboard action.) -->
+      <g class="wheel-sector" role="button" tabindex="0" aria-label={item.name} onclick={()=>enter(item.id)} use:keyboard={{keydown: e=>activate(e,()=>enter(item.id))}}>
        <path d={sectorPath(30,104,start+1.2,start+118.8)}/>
        <g transform={`translate(${location[0]-9} ${location[1]-15})`}><item.icon size={18} strokeWidth={1.5}/></g>
        <text x={location[0]} y={location[1]+15}>{item.name}</text>
@@ -41,19 +43,22 @@
       {@const ring=Math.floor(i/24)}{@const start=-90+(i%24)*15}{@const inner=40+ring*32}{@const color=paletteColor(i)}
       {#if i===69}
        {@const point=polar(inner+15,start+7.5)}
-       <g class="wheel-swatch wheel-eyedropper" role="button" tabindex="0" aria-label="从图片取色" onclick={pick} onkeydown={e=>activate(e,pick)}>
+<!-- svelte-ignore a11y_click_events_have_key_events (Keyboard activation uses the central keyboard action.) -->
+       <g class="wheel-swatch wheel-eyedropper" role="button" tabindex="0" aria-label="从图片取色" onclick={pick} use:keyboard={{keydown: e=>activate(e,pick)}}>
         <path d={sectorPath(inner,inner+30,start+.6,start+14.4)}/>
         <g transform={`translate(${point[0]-7} ${point[1]-7})`}><Pipette size={14} strokeWidth={1.6}/></g>
        </g>
       {:else}
-       <path class="wheel-swatch" class:selected={studio.brush.color.toLowerCase()===color} d={sectorPath(inner,inner+30,start+.6,start+14.4)} fill={color} role="button" tabindex="0" aria-label={`Use ${color}`} onpointerenter={()=>hoverColor=color} onpointerleave={()=>hoverColor=''} onfocus={()=>hoverColor=color} onblur={()=>hoverColor=''} onclick={()=>choose(color)} onkeydown={e=>activate(e,()=>choose(color))}/>
+<!-- svelte-ignore a11y_click_events_have_key_events (Keyboard activation uses the central keyboard action.) -->
+       <path class="wheel-swatch" class:selected={studio.brush.color.toLowerCase()===color} d={sectorPath(inner,inner+30,start+.6,start+14.4)} fill={color} role="button" tabindex="0" aria-label={`Use ${color}`} onpointerenter={()=>hoverColor=color} onpointerleave={()=>hoverColor=''} onfocus={()=>hoverColor=color} onblur={()=>hoverColor=''} onclick={()=>choose(color)} use:keyboard={{keydown: e=>activate(e,()=>choose(color))}}/>
       {/if}
      {/each}
     {:else}
      {@const settings=page==='brush'?studio.brush:studio.eraser}
      {@const isBrush=page==='brush'}{@const location=polar(70,isBrush?30:150)}
      {@const start=isBrush?-8:145}{@const end=isBrush?35:188}{@const side=isBrush?'right':'left'}
-     <g class="parameter-tool" role="button" tabindex="0" aria-label="返回绘画工具" onclick={back} onkeydown={e=>activate(e,back)}>
+<!-- svelte-ignore a11y_click_events_have_key_events (Keyboard activation uses the central keyboard action.) -->
+     <g class="parameter-tool" role="button" tabindex="0" aria-label="返回绘画工具" onclick={back} use:keyboard={{keydown: e=>activate(e,back)}}>
       <circle class="parameter-tool-hit" cx={location[0]} cy={location[1]} r="25"/>
       <g transform={`translate(${location[0]-9} ${location[1]-15})`}>{#if isBrush}<Brush size={18} strokeWidth={1.5}/>{:else}<Eraser size={18} strokeWidth={1.5}/>{/if}</g>
       <text x={location[0]} y={location[1]+15}>{isBrush?"画笔":"橡皮擦"}</text>

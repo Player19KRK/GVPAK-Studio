@@ -1,0 +1,2 @@
+<script>import Button from '../ui/Button.svelte';let {message,onretry=()=>{},onskip=()=>{}}=$props();</script>
+<div class="chat-error" role="alert"><p>{message}</p><Button onclick={onretry}>重试</Button><Button variant="subtle" onclick={onskip}>跳过</Button></div><style>.chat-error{font-size:12px;color:var(--danger);border-left:2px solid var(--danger);padding:8px 12px}.chat-error p{line-height:1.7;overflow-wrap:anywhere;margin:0 0 8px}</style>

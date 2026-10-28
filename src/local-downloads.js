@@ -9,7 +9,7 @@ function storage(key,value,write=false){if(typeof indexedDB==='undefined')return
 async function persistReceipts(){await storage('receipts',[...receipts],true).catch(()=>{});changed();}
 export async function restoreDirectory(){if(initialized)return;initialized=true;const prior=await storage('receipts').catch(()=>null);for(const [url,r]of prior||[])receipts.set(url,r);const handle=await storage('directory').catch(()=>null);if(handle&&await handle.queryPermission({mode:'readwrite'}).catch(()=> 'denied')==='granted')directory=handle;window.dispatchEvent(new Event('team-directory'));changed();}
 export async function chooseDirectory(){
- if(!window.showDirectoryPicker||!window.isSecureContext){report('此浏览器不能选择保存文件夹。请下载图片后点击“已保存，清理主机”。未确认的图片保留 24 小时。');return '浏览器下载目录';}
+ if(!window.showDirectoryPicker||!window.isSecureContext){report('此浏览器不能选择保存文件夹。请下载图片后点击“选择已保存文件并校验”。未校验的图片保留 24 小时。');return '浏览器下载目录';}
  try{directory=await window.showDirectoryPicker({mode:'readwrite',id:'gvpak-exports'});await storage('directory',directory,true).catch(()=>{});window.dispatchEvent(new Event('team-directory'));void saveNewFiles().catch(e=>report(e.message));return directory.name;}catch(e){if(e.name==='AbortError')return null;throw Error('无法选择文件夹。请确认网站证书可信，并允许写入所选文件夹。');}
 }
 const digest=async blob=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -30,7 +30,7 @@ async function saveOne(file){
 }
 export function saveFile(file){const work=writeQueue.then(()=>saveOne(file));writeQueue=work.catch(()=>{});return work;}
 export function descriptor(url,fallback='图片.webp'){try{const id=url.split('/').at(-1).replaceAll('-','+').replaceAll('_','/');const name=new TextDecoder().decode(Uint8Array.from(atob(id),c=>c.charCodeAt(0))).split('/').at(-1);return {url,name:name||fallback};}catch{return {url,name:fallback};}}
-export async function confirmSaved(file){const receipt=receipts.get(file.url);if(!receipt)throw Error('请先使用下载按钮保存图片，再确认清理。');if(!window.confirm('请确认图片已完整保存到你的电脑。继续后，主机上的对应原图和结果将被清理，再次编辑需要重新导入。'))return false;await acknowledge(file,receipt);return true;}
+export async function confirmSaved(file){const receipt=receipts.get(file.url);if(!receipt)throw Error('请先下载图片，再选择已保存的文件进行校验。');if(!window.showOpenFilePicker||!window.isSecureContext)throw Error('此浏览器无法校验已下载文件，请使用另存为或选择保存文件夹重新保存；主机副本仍保留。');let handle;try{[handle]=await window.showOpenFilePicker({multiple:false,id:'gvpak-verify-downloaded-image'});}catch(error){if(error.name==='AbortError')return false;throw Error('无法读取本机文件，请选择保存文件夹重新保存；主机副本仍保留。');}if(!handle)return false;if(!await verify(handle,receipt))throw Error('选择的文件与下载结果不一致，主机副本仍保留。');await acknowledge(file,receipt);return true;}
 export async function saveNewFiles(){if(!directory||saving)return;saving=true;try{const response=await fetch('/api/files',{cache:'no-store'});if(!response.ok)return;for(const file of (await response.json()).files)await saveFile(file);}finally{saving=false;}}
 
 // Request the handle before yielding so the browser retains the click activation.

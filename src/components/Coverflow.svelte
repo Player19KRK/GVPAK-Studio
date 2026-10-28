@@ -3,7 +3,8 @@
  import {layout,coverflowMax,saveLayout} from '../layout.svelte';import ResizeHandle from './ResizeHandle.svelte';
  import {ChevronLeft,ChevronRight,Check,FolderOpen,Minus,SquareCheck,ChevronDown,ChevronUp} from 'lucide-svelte';
  import {studio,assets,current,select,toggle} from '../studio.svelte';
- let list=$derived(assets());let index=$derived(Math.max(0,list.findIndex(a=>a.id===studio.aid)));let accumulator=0;let hovered=false,root,spaceHeld=$state(false),selecting=$state(true),badgeVisible=$state(false),badgeSelecting=$state(true),badgeEpoch=$state(0);let badgeTimer;
+ let {items=undefined}=$props();
+ let list=$derived(items??assets());let index=$derived(Math.max(0,list.findIndex(a=>a.id===studio.aid)));let accumulator=0;let hovered=false,root,spaceHeld=$state(false),selecting=$state(true),badgeVisible=$state(false),badgeSelecting=$state(true),badgeEpoch=$state(0);let badgeTimer;
  function modeNotice(value,checked){spaceHeld=value;selecting=checked;clearTimeout(badgeTimer);if(value){badgeSelecting=checked;badgeVisible=true;badgeEpoch++;}else if(badgeVisible)badgeTimer=setTimeout(()=>badgeVisible=false,600);}
  const quick=createQuickSelection({getIds:()=>list.map(a=>a.id),getCurrent:()=>studio.aid,isSelected:id=>studio.selected.includes(id),setSelected:(ids,checked)=>{studio.selected=checked?[...new Set([...studio.selected,...ids])]:studio.selected.filter(id=>!ids.includes(id));studio.batchScope='auto';},navigate:select,onHeld:modeNotice});
  function typing(){const el=document.activeElement;return !!el&&(el.isContentEditable||!!el.closest('input,textarea,select,[role=textbox]'));}

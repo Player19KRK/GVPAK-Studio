@@ -1,0 +1,12 @@
+use crate::Res;use serde::{Serialize,Deserialize};
+#[derive(Clone,Serialize,Deserialize)]#[serde(rename_all="camelCase",deny_unknown_fields)]
+pub(crate) struct Entry{pub asset_id:String,#[serde(default)]pub folder:Option<String>,#[serde(default)]pub tags:Option<Vec<String>>}
+impl Entry{pub fn validate(&self)->Res<()>{if let Some(folder)=&self.folder{if folder.len()>600||folder.contains([':', '\\', '\0'])||folder.starts_with('/')||folder.ends_with('/')||folder.split('/').any(|part|part==".."||part==".")||folder.contains("//"){return Err("INVALID_RELATIVE_FOLDER".into())}}if let Some(tags)=&self.tags{if tags.len()>32||tags.iter().any(|tag|tag.is_empty()||tag.chars().count()>60){return Err("INVALID_TAGS".into())}}Ok(())}}
+#[cfg(test)]mod tests{use super::*;#[test]fn relative_folders_reject_absolute_and_parent_paths(){for folder in ["../private","C:/private","/absolute","a/../b","a\\b","a//b"]{assert!(Entry{asset_id:"a".into(),folder:Some(folder.into()),tags:None}.validate().is_err());}assert!(Entry{asset_id:"a".into(),folder:Some("导入/2026-10-27".into()),tags:Some(vec!["新品".into()])}.validate().is_ok());}}
+
+#[cfg(test)]mod storage_tests{use super::*;
+ #[test]fn metadata_is_persistent_atomic_and_preserves_original_bytes(){let temp=tempfile::tempdir().unwrap();let store=crate::core::Store::open(temp.path().join("data"),"test").unwrap();let project=store.create("metadata fixture".into()).unwrap();let file=temp.path().join("image.png");image::RgbaImage::from_pixel(4,4,image::Rgba([100,120,140,255])).save(&file).unwrap();let project=store.import(&project.id,vec![file.to_string_lossy().into()],&std::sync::atomic::AtomicBool::new(false),|_,_|{}).unwrap().project;let a=&project.assets[0];let original=store.root.join("projects").join(&project.id).join(&a.original);let bytes=std::fs::read(&original).unwrap();
+ assert!(store.metadata(&project.id,vec![Entry{asset_id:a.id.clone(),folder:Some("导入/2026-10-27".into()),tags:None},Entry{asset_id:"missing".into(),folder:None,tags:Some(vec![])}]).is_err());assert_eq!(store.load(&project.id).unwrap().assets[0].folder_id,None);
+ store.metadata(&project.id,vec![Entry{asset_id:a.id.clone(),folder:Some("导入/2026-10-27".into()),tags:Some(vec!["新品".into()])}]).unwrap();let actual=store.load(&project.id).unwrap();assert_eq!(actual.assets[0].folder_id.as_deref(),Some("导入/2026-10-27"));assert_eq!(actual.assets[0].relative_path.as_deref(),Some("导入/2026-10-27/image.png"));assert_eq!(std::fs::read(original).unwrap(),bytes);
+ }
+}

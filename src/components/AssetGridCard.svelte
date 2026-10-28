@@ -1,0 +1,6 @@
+<script>
+ import {selection} from '../stores/selection.svelte';import {assets} from '../stores/assets.svelte';import {studio} from '../studio.svelte';import {navigate} from '../app/shell.svelte';
+ let {ids=[],onshow=null}=$props();function show(){selection.set(ids);if(onshow)onshow(ids);else navigate('/library');}
+</script>
+<div class="chat-assets">{#each ids.slice(0,12) as id}<button onclick={show} title={assets.index[id]?.name||'图片'} aria-label={`查看 ${assets.index[id]?.name||'图片'}`}>{#if studio.thumbs[id]}<img src={studio.thumbs[id]} alt={assets.index[id]?.name||'图片'}/>{:else}<span>{assets.index[id]?.name||'图片'}</span>{/if}</button>{/each}{#if ids.length>12}<button onclick={show}>+{ids.length-12}</button>{/if}</div>
+<style>.chat-assets{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.chat-assets button{aspect-ratio:1;overflow:hidden;background:var(--bg-sunken);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer}.chat-assets img{width:100%;height:100%;object-fit:contain}.chat-assets button:hover{border-color:var(--accent)}.chat-assets button:active{background:var(--accent-soft)}.chat-assets button:focus-visible{outline:2px solid var(--focus)}</style>

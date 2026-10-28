@@ -66,9 +66,9 @@ impl Recipe {
             if !["", "batch", "realtime"].contains(&g.mode.as_str()) || g.prompt.trim().is_empty()
                 || g.prompt.len() > 16000
                 || !["1K","2K","4K"].contains(&g.resolution.as_str())
-                || !["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3"].contains(&g.ratio.as_str())
+                || !["1:1", "4:3", "3:4", "16:9", "9:16", "3:2", "2:3", "4:5", "5:4"].contains(&g.ratio.as_str())
             {
-                return Err("INVALID_GENERATION: 混合任务当前使用 1K 生图".into());
+                return Err("INVALID_GENERATION: 请使用支持的比例和1K/2K/4K分辨率".into());
             }
         }
         Ok(())

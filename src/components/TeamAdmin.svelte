@@ -1,6 +1,6 @@
 <script>
- import {onMount} from 'svelte';import {api} from '../api';let username=$state(''),password=$state(''),action=$state('create'),accounts=$state([]),urls=$state([]),error=$state(''),busy=$state(false);
- async function refresh(){try{const r=await api('team_accounts');accounts=r.accounts;urls=r.urls.filter(u=>!u.includes('localhost')&&!u.includes('127.0.0.1'));}catch(e){error=e.message;}}
+ import {onMount} from 'svelte';import {getSettingsApi} from '../services/settings.ts';let {onchanged=()=>{}}=$props();const api=(_name,input={})=>getSettingsApi().accounts(input);let username=$state(''),password=$state(''),action=$state('create'),accounts=$state([]),urls=$state([]),error=$state(''),busy=$state(false);
+ async function refresh(){try{const r=await api('team_accounts');accounts=r.accounts;onchanged();urls=r.urls.filter(u=>!u.includes('localhost')&&!u.includes('127.0.0.1'));}catch(e){error=e.message;}}
  onMount(()=>{refresh();const timer=setInterval(refresh,10000);return ()=>clearInterval(timer);});
  async function submit(){busy=true;error='';try{await api('team_accounts',{action,username,password});password='';await refresh();}catch(e){error=e.message;}finally{busy=false;}}
  async function disable(username){busy=true;try{await api('team_accounts',{action:'disable',username});await refresh();}catch(e){error=e.message;}finally{busy=false;}}

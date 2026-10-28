@@ -1,62 +1,89 @@
 <script>
- import Feedback from './components/Feedback.svelte';
- import TeamBar from './components/TeamBar.svelte';
+ import {startExecutionPrefs} from './stores/execution-prefs.svelte';
+ import {connectChat} from './stores/chat.svelte';
+ import {commitEditorEdit} from './services/editor.js';
+ import EditorTools from './components/EditorTools.svelte';
+ import VersionBar from './components/VersionBar.svelte';
+ import {editor as editorState} from './stores/editor.svelte';
+ import {onMount,untrack,tick} from 'svelte';
+ import {SlidersHorizontal,Crop,RotateCw} from 'lucide-svelte';
+ import AppShell from './components/AppShell.svelte';
+ import FoundationPage from './components/FoundationPage.svelte';
+ import RatioBar from './components/RatioBar.svelte';
+ import Canvas from './components/Canvas.svelte';
+ import Inspector from './components/Inspector.svelte';
+ import CoverflowHost from './components/CoverflowHost.svelte';
+ import Generate from './components/Generate.svelte';
+ import {shell,routing,startRouting,navigate,saveShell} from './app/shell.svelte';
+ import {editorUrl} from './lib/router.ts';
+ import {installApplicationShortcuts} from './lib/shortcuts.ts';
+ import {ratios} from './lib/ratio.ts';
  import {layout,updateViewport} from './layout.svelte';
- import {onMount} from 'svelte';import {SlidersHorizontal,Crop,RotateCw,Columns2,Upload,FolderOpen,Grid2X2,Plus,ArrowUpRight,Sparkles,Save,Check,X,ChevronDown,PanelRightClose,PanelRightOpen,Download,FlipHorizontal,FlipVertical,RotateCcw} from 'lucide-svelte';
- import {studio,current,asset,assets,scope,initialize,dispose,select,run,save,notify,importImages,dropImages,change,undo,redo,isDirty,thumbnails,clearSelection,liveAssets} from './studio.svelte';import {api,initialEdit} from './api';
- import RadialMenu from './components/RadialMenu.svelte';
- import Canvas from './components/Canvas.svelte';import Inspector from './components/Inspector.svelte';import Coverflow from './components/Coverflow.svelte';import Library from './components/Library.svelte';import ExportPanel from './components/Export.svelte';import SettingsPanel from './components/Settings.svelte';import Generate from './components/Generate.svelte';import Assistant from './components/Assistant.svelte';import Review from './components/Review.svelte';import Confirm from './components/Confirm.svelte';
- let radial=$state(null),dragOver=$state(false),visited=$state([]),heldCompare=false,compareBeforeHold=false;
- onMount(()=>{initialize();studio.inspector=window.innerWidth>900;updateViewport();window.addEventListener('resize',updateViewport);return()=>{window.removeEventListener('resize',updateViewport);dispose();};});
+ import {studio,current,asset,assets,select,run,save,notify,isDirty,thumbnails} from './studio.svelte';
+ import {project as projectStore} from './stores/project.svelte';
+ import {selection} from './stores/selection.svelte';
+ import {assets as assetStore} from './stores/assets.svelte';
+ import {chooseRatioCommand,swapRatioCommand,historyCommand,trashSelectionCommand} from './services/commands.js';
+ import {initializeWorkspace,disposeWorkspace,stopCurrentTask} from './services/workspace.svelte';
+ let compareBeforeHold=false,compareSplit=50,appliedEditorId='',shortcuts;
+ let editorRouteValid=$derived(studio.projects.some(project=>project.assets.some(asset=>asset.id===routing.current.assetId&&!asset.trashed)));
+ const compareKeys=new Set();
+ const selectProject=id=>projectStore.select(id);
+ onMount(()=>{
+  const rememberedProject=shell.projectId,stopRouting=startRouting(),stopChatSync=connectChat(),stopPrefs=startExecutionPrefs();let live=true;
+  studio.inspector=window.innerWidth>900;updateViewport();window.addEventListener('resize',updateViewport);
+  shortcuts=installApplicationShortcuts({getContext:()=>({page:routing.current.page,busy:!!studio.busy}),onError:error=>studio.error=error instanceof Error?error.message:String(error),actions:{
+   'composer.focus':async()=>{if(routing.current.page==='generate'){document.querySelector('.generation-form textarea[aria-label="图片生成要求"],.np-page textarea[aria-label="新品套图要求"]')?.focus();return;}if(routing.current.page==='home'){document.querySelector('[data-composer]')?.focus();return;}if(!['library','editor'].includes(routing.current.page))return;shell.chatCollapsed=false;saveShell();await tick();document.querySelector('[data-composer]')?.focus();},
+   'chat.toggle':()=>{if(routing.current.page==='generate'){const wasOpen=studio.workflowChat==='generate'&&!shell.chatCollapsed;studio.workflowChat='generate';shell.chatCollapsed=wasOpen;saveShell();return;}if(!['library','editor'].includes(routing.current.page))return;shell.chatCollapsed=!shell.chatCollapsed;saveShell();},
+   'history.undo':()=>historyCommand('undo'),'history.redo':()=>historyCommand('redo'),
+   'task.escape':()=>{studio.picking=false;return stopCurrentTask();},
+   'editor.save':saveNow,'library.selectAll':()=>selection.set(assetStore.filteredIds),
+   'library.trash':trashSelectionCommand,'library.open':()=>{const id=selection.selectedIds[0]||studio.aid;if(id)navigate(editorUrl(id));},
+   ...Object.fromEntries(ratios.map((ratio,index)=>[`editor.ratio.${index+1}`,()=>chooseRatioCommand(ratio)])),
+   'editor.ratio.swap':swapRatioCommand,'editor.compare':compareHeld,
+   'editor.previous':()=>step(-1),'editor.next':()=>step(1),
+   'editor.brush':()=>{studio.paintTool=null;studio.tool='mask';studio.inspectorTab='properties';studio.inspector=true;},
+   'editor.tool.previous':()=>cycleTool(-1),'editor.tool.next':()=>cycleTool(1),
+   'editor.mask.smaller':()=>editorState.mask.size=Math.max(2,Number(editorState.mask.size)-4),'editor.mask.larger':()=>editorState.mask.size=Math.min(300,Number(editorState.mask.size)+4),'editor.fit':()=>{studio.zoom=1;studio.canvasFit=true;studio.pan={x:0,y:0};},
+  }});
+  initializeWorkspace().then(()=>{if(!live||!studio.ready)return;const project=studio.projects.find(p=>p.id===rememberedProject);if(project&&routing.current.page!=='editor')selectProject(project.id);});
+  return()=>{stopPrefs();stopChatSync();live=false;shortcuts.destroy();stopRouting();window.removeEventListener('resize',updateViewport);disposeWorkspace();};
+ });
+ $effect(()=>{if(studio.ready&&studio.pid){shell.projectId=studio.pid;saveShell();}});
+ $effect(()=>{routing.current.page;routing.current.assetId;shortcuts?.releaseHeld();});
+ $effect(()=>{
+  const route=routing.current;
+  if(route.page!=='editor'){appliedEditorId='';if(route.page==='generate')studio.mode='generate';return;}
+  if(!studio.ready||route.assetId===appliedEditorId)return;
+  const project=studio.projects.find(p=>p.assets.some(a=>a.id===route.assetId&&!a.trashed));
+  if(!project)return;
+  untrack(()=>{if(studio.pid!==project.id)selectProject(project.id);if(studio.aid!==route.assetId)select(route.assetId);studio.mode='edit';studio.view='canvas';appliedEditorId=route.assetId;});
+ });
+ $effect(()=>{const id=studio.aid;if(studio.ready&&routing.current.page==='editor'&&appliedEditorId&&id&&id!==appliedEditorId){appliedEditorId=id;untrack(()=>navigate(editorUrl(id),{replace:true}));}});
+ $effect(()=>{if(routing.current.page==='editor'&&studio.ready&&studio.view!=='canvas')untrack(()=>navigate('/library'));});
  $effect(()=>{if(studio.view==='projects')for(const p of studio.projects)thumbnails(p);});
- $effect(()=>{if(studio.ready&&['generate','export','assistant'].includes(studio.mode)&&!visited.includes(studio.mode))visited.push(studio.mode);});
- const modes=[['edit',"编辑"],['generate',"生成图片"],['export',"导出"],['settings',"设置"]];
- function mode(value){if(studio.busy)return;studio.mode=value;studio.settingsReturn='';studio.view='canvas';radial=null;}
- let panelVisible=$derived(studio.inspector&&!layout.focus&&studio.mode==='edit'&&studio.view==='canvas');
- function panelOpen(value){return panelVisible&&studio.tool===value&&studio.inspectorTab==='adjust';}
- function tool(value,toggle=false){
-  if(studio.busy)return;
-  studio.paintTool=null;studio.picking=false;
-  if(toggle&&panelOpen(value)){studio.inspector=false;return;}
-  layout.focus=false;studio.tool=value;studio.mode='edit';studio.view='canvas';studio.inspectorTab='adjust';studio.inspector=true;
- }
+ function panelOpen(value){return studio.inspector&&!layout.focus&&studio.tool===value&&studio.inspectorTab==='adjust';}
+ function tool(value,toggle=false){if(studio.busy)return;studio.paintTool=null;studio.picking=false;if(toggle&&panelOpen(value)){studio.inspector=false;return;}layout.focus=false;studio.tool=value;studio.mode='edit';studio.view='canvas';studio.inspectorTab='adjust';studio.inspector=true;}
  function closeInspector(){studio.inspector=false;document.querySelector(`[data-tool="${studio.tool}"]`)?.focus();}
- function toggleInspector(){if(studio.busy||studio.mode!=='edit'||studio.view!=='canvas')return;if(layout.focus){layout.focus=false;studio.inspector=true;}else studio.inspector=!studio.inspector;}
-
- async function saveNow(){if(!isDirty()){notify("没有需要保存的新修改");return;}await run("正在保存版本",async()=>{const saved=await save([studio.aid]);notify(saved?"版本已保存":"没有需要保存的新修改");});}
- function step(direction){const list=assets(),i=list.findIndex(a=>a.id===studio.aid);if(list[i+direction])select(list[i+direction].id);}
- function key(e){if(e.defaultPrevented||studio.paintMenuOpen)return;if(e.key==='Escape'&&studio.picking){studio.picking=false;return;}const editing=e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target instanceof HTMLSelectElement;if(e.key==='Escape'){if(studio.confirm){studio.confirm.cancel();return;}radial=null;studio.modal='';studio.compare=false;return;}if(editing||studio.modal||studio.confirm||studio.busy)return;if(e.code==='Space'&&e.target.closest?.('.canvas-stage')){e.preventDefault();studio.spacePan=true;return;}if(e.key.toLowerCase()==='b'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&studio.mode==='edit'){studio.paintTool='brush';studio.tool='adjust';return;}if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveNow();return;}if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}if(e.ctrlKey&&['1','2','3','4'].includes(e.key)){e.preventDefault();mode(modes[Number(e.key)-1][0]);return;}if(studio.mode==='edit'&&studio.view==='canvas'){if(e.key==='ArrowLeft')step(-1);if(e.key==='ArrowRight')step(1);}if(e.key==='0'){studio.zoom=1;studio.canvasFit=true;studio.pan={x:0,y:0};}if(e.code==='Backslash'&&!heldCompare){compareBeforeHold=studio.compare;heldCompare=true;studio.compare=true;}if(studio.mode==='edit'&&['q','e'].includes(e.key.toLowerCase())){const tools=['adjust','crop','transform'];const i=tools.indexOf(studio.tool);tool(tools[(i+(e.key.toLowerCase()==='q'?tools.length-1:1))%tools.length]);}}
- async function dropped(e){e.preventDefault();dragOver=false;const files=[];async function read(entry){if(entry.isFile){const f=await new Promise((resolve,reject)=>entry.file(resolve,reject));if(f.type.startsWith('image/'))files.push(f);}else if(entry.isDirectory){const reader=entry.createReader();while(true){const children=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!children.length)break;for(const child of children)await read(child);}}}const entries=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry?.()).filter(Boolean);if(entries.length){for(const entry of entries)await read(entry);}else files.push(...[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/')));dropImages(files);}
- function closeRadial(){radial=null;studio.paintMenuOpen=false;document.querySelector('.canvas-stage')?.focus({preventScroll:true});}
- function context(e){if(studio.mode!=='edit'||studio.view!=='canvas'||studio.busy||!asset()||!e.target.closest('.canvas-stage'))return;e.preventDefault();studio.picking=false;studio.paintMenuOpen=true;radial={x:e.clientX,y:e.clientY};}
- $effect(()=>{if(studio.mode!=='edit'||studio.view!=='canvas'||studio.busy){radial=null;studio.paintMenuOpen=false;studio.picking=false;}});
-
+ async function saveNow(){if(!isDirty())return;await commitEditorEdit();}
+ function step(direction){const ids=editorState.coverflowIds??(selection.selectedIds.length?selection.selectedIds:assetStore.filteredIds),i=ids.indexOf(studio.aid);if(ids[i+direction])select(ids[i+direction]);}
+ function cycleTool(direction){const values=['adjust','crop','transform'],index=values.indexOf(studio.tool);tool(values[(index+direction+values.length)%values.length]);}
+ function compareHeld(event,phase){if(phase==='press'){if(!compareKeys.size){compareBeforeHold=studio.compare;compareSplit=studio.split;}compareKeys.add(event.code);studio.compare=true;studio.split=100;}else{compareKeys.delete(event.code);if(!compareKeys.size){studio.compare=compareBeforeHold;studio.split=compareSplit;}}}
 </script>
-<svelte:window onkeydown={key} onblur={()=>{studio.spacePan=false;}} onkeyup={e=>{if(e.code==='Space')studio.spacePan=false;if(e.code==='Backslash'&&heldCompare){studio.compare=compareBeforeHold;heldCompare=false;}}}/>
-<div class="app" ondragover={e=>{e.preventDefault();dragOver=true;}} ondragleave={e=>{if(!e.currentTarget.contains(e.relatedTarget))dragOver=false;}} ondrop={dropped} role="application" aria-label="GVPAK STUDIO">
- <header class="app-header" inert={!!studio.busy}><button class="brand" aria-label="打开项目" onclick={()=>{studio.mode='edit';studio.view='projects';}}><span>GVPAK</span><span class="brand-studio">STUDIO</span></button><button class="project-switch" onclick={()=>{studio.mode='edit';studio.view=studio.view==='projects'?'canvas':'projects';}}><span class="project-square"></span>{current()?.name||"项目"}<ChevronDown size={12}/></button><nav class="mode-tabs" aria-label="工作区">{#each modes as [value,label]}<button class:active={studio.mode===value} onclick={()=>mode(value)} disabled={!!studio.busy}>{label}</button>{/each}</nav><div class="header-actions"><button class="ai-button" class:active={studio.mode==='assistant'} disabled={!asset()||!!studio.busy} onclick={()=>mode('assistant')}><Sparkles size={15}/>处理图片</button><button class="save-button" title="保存版本 · Ctrl+S" disabled={!asset()||!isDirty()||!!studio.busy} onclick={saveNow}><Save size={15}/><span>保存版本</span></button></div></header>
- <div class="project-warning-notice" role="status" hidden={!studio.projectWarnings.length}><span>{studio.projectWarnings.length} 个项目未能加载。</span><button class="text-button" onclick={()=>{studio.mode='settings';studio.view='canvas';}}>查看问题和数据目录</button></div><div class="app-workspace"><nav inert={!!studio.busy} class="toolrail" aria-label="图片工具"><button data-tool="adjust" class:chosen={panelOpen('adjust')} onclick={()=>tool('adjust',true)} aria-controls="editor-inspector" aria-expanded={panelOpen('adjust')} title={panelOpen('adjust')?"调色：收起面板":"调色：打开面板"} aria-label="调色"><SlidersHorizontal size={20}/></button><button data-tool="crop" class:chosen={panelOpen('crop')} onclick={()=>tool('crop',true)} aria-controls="editor-inspector" aria-expanded={panelOpen('crop')} title={panelOpen('crop')?"裁切：收起面板":"裁切：打开面板"} aria-label="裁切"><Crop size={20}/></button><button data-tool="transform" class:chosen={panelOpen('transform')} onclick={()=>tool('transform',true)} aria-controls="editor-inspector" aria-expanded={panelOpen('transform')} title={panelOpen('transform')?"旋转与翻转：收起面板":"旋转与翻转：打开面板"} aria-label="旋转与翻转"><RotateCw size={20}/></button><button class:chosen={studio.compare} onclick={()=>{mode('edit');studio.compare=!studio.compare;}} title="对比原图" aria-label="对比原图"><Columns2 size={20}/></button><span class="rail-divider"></span><button onclick={()=>importImages(false)} disabled={!!studio.busy} title="导入图片" aria-label="导入图片"><Upload size={20}/></button><button onclick={()=>importImages(true)} disabled={!!studio.busy} title="导入文件夹" aria-label="导入文件夹"><FolderOpen size={20}/></button><button class:chosen={studio.view==='grid'} onclick={()=>{const next=studio.view==='grid'?'canvas':'grid';mode('edit');studio.view=next;}} title="图片列表" aria-label="图片列表"><Grid2X2 size={20}/></button><div class="rail-bottom"><button onclick={toggleInspector} disabled={studio.mode!=='edit'||studio.view!=='canvas'} title={panelVisible?"隐藏右侧面板":"显示右侧面板"} aria-label="显示或隐藏右侧面板" aria-controls="editor-inspector" aria-expanded={panelVisible}>{#if panelVisible}<PanelRightClose size={19}/>{:else}<PanelRightOpen size={19}/>{/if}</button></div></nav>
- <main class:editing={studio.mode==='edit'} oncontextmenu={context} role="region" aria-label="工作区内容">
- {#if !studio.ready}<div class="empty"><h2>{studio.error?"无法连接":"正在打开工作区"}</h2>{#if studio.error}<button class="primary" onclick={initialize}>重试</button>{/if}</div>
- {:else if studio.view!=='canvas'&&studio.mode==='edit'}<Library/>
- {:else if studio.mode==='edit'}<div class="editor-canvas"><Canvas/></div>{#if !layout.focus}<Coverflow/>{/if}
- {:else if studio.mode==='settings'}<SettingsPanel/>{/if}
- {#if visited.includes('export')}<div class="workflow-host" hidden={studio.mode!=='export'||!studio.ready}><ExportPanel/></div>{/if}
- {#if visited.includes('generate')}<div class="workflow-host" hidden={studio.mode!=='generate'||!studio.ready}><Generate/></div>{/if}
- {#if visited.includes('assistant')}<div class="workflow-host" hidden={studio.mode!=='assistant'||!studio.ready}><Assistant/></div>{/if}
- </main>{#if studio.inspector&&!layout.focus&&studio.mode==='edit'&&studio.view==='canvas'}<Inspector onclose={closeInspector}/>{/if}</div>
- <footer class="app-footer"><span><i class:working={!!studio.busy}></i>{studio.busy||"就绪"}{#if studio.progress}<b>{studio.progress.done} / {studio.progress.total}</b>{/if}</span><span>{studio.selected.length?`${studio.selected.length} 已勾选`:asset()?"当前图片":"暂无图片"}{#if studio.selected.length}<button class="clear-selection" disabled={!!studio.busy} onclick={clearSelection} aria-label="取消全部勾选">清除</button>{/if}</span><span class="footer-right">{isDirty()?studio.draftStatus:''}{#if isDirty()}<button class="clear-selection" title="恢复到已保存的版本" onclick={()=>change({...asset().edit})}>撤销未保存的修改</button>{/if}<b>GVPAK STUDIO</b></span></footer>
- {#if studio.busy}<div class="busy-pill" role="status"><span class="spinner"></span>{studio.busy}{#if studio.progress}<span>{studio.progress.done}/{studio.progress.total}</span><button onclick={()=>api('cancel_job').catch(e=>studio.error=e.message)}>取消剩余任务</button>{/if}</div>{/if}
- {#if studio.error}<div class="error-notice" role="alert"><span>{studio.error}</span><button aria-label="关闭错误提示" onclick={()=>studio.error=''}><X size={15}/></button></div>{/if}
- {#if studio.toast}<div class="toast" role="status"><Check size={15}/>{studio.toast}{#if studio.toastAction}<button onclick={()=>{const action=studio.toastAction;studio.toastAction=null;action.run();}}>{studio.toastAction.label}</button>{/if}</div>{/if}
- {#if studio.notices.length}<div class="job-notice"><b>{studio.notices[0].recipe.summary}</b><span>{studio.notices[0].state}</span><div><button onclick={()=>{studio.processTab='jobs';mode('assistant');}}>查看任务</button><button aria-label="关闭任务提醒" onclick={async()=>{await api('hybrid_ack',{jobId:studio.notices[0].id});studio.notices=studio.notices.slice(1);}}><X size={14}/></button></div></div>{/if}
- {#if studio.confirm}<Confirm/>{/if}
- {#if studio.modal?.type==='review'}<Review/>{/if}
- {#if dragOver}<div class="drop-overlay"><Upload size={32}/><h2>拖入图片以导入</h2></div>{/if}
- {#if radial}<RadialMenu anchor={radial} onclose={closeRadial}/>{/if}
-</div>
+<AppShell projectName={current()?.name||''} assetId={studio.aid} selectedCount={studio.selected.length} projects={studio.projects} projectId={studio.pid} onprojectchange={id=>{selectProject(id);shell.projectId=id;saveShell();if(routing.current.page==='editor'&&studio.aid)navigate(editorUrl(studio.aid));}}>
+ {#if routing.current.page==='generate'&&studio.ready}<Generate/>
+ {:else if routing.current.page==='editor'&&studio.ready&&asset()&&editorRouteValid}
+  <div class="legacy-editor">
+   <div class="app-workspace">
+    <nav class="toolrail" aria-label="图片工具"><EditorTools/><button data-tool="adjust" onclick={()=>tool('adjust',true)} title="调色" aria-label="调色"><SlidersHorizontal size={20}/></button><button data-tool="crop" onclick={()=>tool('crop',true)} title="裁切" aria-label="裁切"><Crop size={20}/></button><button data-tool="transform" onclick={()=>tool('transform',true)} title="旋转与翻转" aria-label="旋转与翻转"><RotateCw size={20}/></button></nav>
+    <main class="editing" aria-label="图片编辑"><div class="editor-canvas"><div class="editor-ratio-strip"><RatioBar disabled={!!studio.busy} onerror={e=>studio.error=e.message}/></div><Canvas/></div><VersionBar/>{#if !layout.focus}<CoverflowHost/>{/if}</main>
+    {#if studio.inspector&&!layout.focus}<Inspector onclose={closeInspector} historyEnabled={false}/>{/if}
+   </div>
+   <div class="editor-status" role="status">{studio.busy||studio.error||studio.draftStatus||'就绪'}</div>
+  </div>
+ {:else}
+  <FoundationPage ready={studio.ready} error={studio.error} retry={() => initializeWorkspace()}/>
+ {/if}
+</AppShell>
 
-
-<TeamBar/>
-
-<Feedback/>
+<style>.editor-ratio-strip{display:flex;align-items:center;min-height:40px;padding:4px 12px;box-sizing:border-box;background:var(--bg-elev);border-bottom:1px solid var(--border)}</style>

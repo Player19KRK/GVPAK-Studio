@@ -1,4 +1,5 @@
 <script>
+ import {shortcutScope} from '../lib/shortcuts.ts';
  import {onMount} from 'svelte';import {X,ArrowUpRight} from 'lucide-svelte';
  let {project,thumbs,anchor,onselect,onclose,onzoom}=$props();let panel,scroller;let row=$state(0);let pictures=$derived(project.assets.filter(a=>!a.trashed));let layout=$state({left:12,top:12,width:330,height:390,origin:'left top'});
  function position(){const r=anchor?.getBoundingClientRect();if(!r)return;const gap=10,margin=12;const width=Math.min(338,innerWidth-24);const cell=(width-36)/3;const height=Math.min(84+Math.min(3,Math.max(1,Math.ceil(pictures.length/3)))*(cell+6),innerHeight-24);let left,top,origin;
@@ -24,8 +25,8 @@
  export function scrollBy(delta){scrollRows(delta);}
  function wheel(node){const handler=e=>{e.preventDefault();e.stopPropagation();if(e.ctrlKey){onzoom(e);position();return;}scrollRows(e.deltaY*(e.deltaMode===1?20:e.deltaMode===2?node.clientHeight:1));};node.addEventListener('wheel',handler,{passive:false});return{destroy(){node.removeEventListener('wheel',handler);}};}
 </script>
-<svelte:window onpointermove={pointerMove} onblur={onclose} onpointerout={e=>{if(!e.relatedTarget)onclose();}} onkeydown={e=>{if(e.key==='Escape')onclose();}}/>
-<div bind:this={panel} popover="manual" class="project-peek" role="region" aria-label={`Preview ${project.name}`} style:left={`${layout.left}px`} style:top={`${layout.top}px`} style:width={`${layout.width}px`} style:max-height={`${layout.height}px`} style:--peek-origin={layout.origin} style:--peek-cell={`${(layout.width-36)/3}px`} onpointerleave={pointerMove} onfocusout={e=>{if(!e.currentTarget.contains(e.relatedTarget))onclose();}} use:wheel>
+<svelte:window onpointermove={pointerMove} onblur={onclose} onpointerout={e=>{if(!e.relatedTarget)onclose();}}/>
+<div use:shortcutScope={{name:'project-preview',bindings:[{key:'Escape',action:()=>onclose()}],exclusive:false}} bind:this={panel} popover="manual" class="project-peek" role="region" aria-label={`Preview ${project.name}`} style:left={`${layout.left}px`} style:top={`${layout.top}px`} style:width={`${layout.width}px`} style:max-height={`${layout.height}px`} style:--peek-origin={layout.origin} style:--peek-cell={`${(layout.width-36)/3}px`} onpointerleave={pointerMove} onfocusout={e=>{if(!e.currentTarget.contains(e.relatedTarget))onclose();}} use:wheel>
  <header><span>{project.name}</span><button aria-label="关闭项目预览" onclick={onclose}><X size={14}/></button></header>
  <div bind:this={scroller} class="peek-grid" onscroll={()=>{row=Math.floor((scroller.scrollTop+.5)/(scroller.firstElementChild?.getBoundingClientRect().height+6||1));}}>{#each pictures as picture,i (picture.id)}<button aria-label={`Open preview ${picture.name}`} title={picture.name} onclick={()=>onselect(project.id,picture.id)}><img src={thumbs[picture.id]} alt={picture.name} loading={i<9?'eager':'lazy'}/><span>{picture.name}</span></button>{/each}</div>
  {#if !pictures.length}<div class="peek-empty">暂无图片</div>{/if}

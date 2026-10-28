@@ -9,7 +9,12 @@
     "preview": "vite preview --host 127.0.0.1",
     "check": "node scripts/check-svelte.mjs",
     "test:p1": "node --conditions=browser --test scripts/test-p1-regressions.mjs",
-    "test:p2": "node --conditions=browser --test scripts/test-p2-regressions.mjs scripts/test-export-preview.mjs"
+    "test:p2": "node --conditions=browser --test scripts/test-p2-regressions.mjs scripts/test-export-preview.mjs",
+    "test": "npm run test:unit && npm run test:regression && npm run test:coverflow",
+    "test:unit": "node --test scripts/test-export-contract.mjs scripts/test-account-service.mjs scripts/test-mock-workspace.mjs scripts/test-local-downloads.mjs scripts/test-thumbnail-cache.mjs scripts/test-task-output.mjs scripts/test-assistant-api.mjs scripts/test-frontend-services.mjs scripts/test-target-ratio.mjs scripts/test-shortcuts.mjs scripts/test-execution.mjs scripts/test-settings.mjs scripts/test-new-product.mjs scripts/test-home.mjs scripts/test-viewport.mjs scripts/test-virtual-grid.mjs scripts/test-task-view.mjs",
+    "test:regression": "node --conditions=browser --test scripts/test-configuration.mjs scripts/test-selection-performance.mjs scripts/test-region-states.mjs scripts/test-history-priority.mjs scripts/test-p1-regressions.mjs scripts/test-p2-regressions.mjs scripts/test-export-preview.mjs scripts/test-new-asset-events.mjs scripts/test-task-order.mjs scripts/test-new-product-read-state.mjs",
+    "test:coverflow": "node --test scripts/test-coverflow-keyboard.mjs scripts/test-coverflow-selection.mjs scripts/test-coverflow-drag.mjs scripts/test-coverflow-source.mjs",
+    "check:publication": "node scripts/check-publication.mjs"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.2.0",
